@@ -10,7 +10,7 @@ permissions: {}
 
 jobs:
   update-flake:
-    if: github.repository == 'PrismLauncher/PrismLauncher'
+    if: github.repository == 'HyperCoreLauncher/HyperCoreLauncher'
 
     permissions:
       contents: write
