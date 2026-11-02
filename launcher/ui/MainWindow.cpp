@@ -943,7 +943,7 @@ void MainWindow::processURLs(QList<QUrl> urls)
                 } else {
                     CustomMessageBox::selectable(
                         this, tr("Error"),
-                        tr("Unsupported Modrinth link.\n\nPrism Launcher currently only supports modpack links such as "
+                        tr("Unsupported Modrinth link.\n\nHyperCore Launcher currently only supports modpack links such as "
                            "modrinth://modpack/fabulously-optimized."),
                         QMessageBox::Critical)
                         ->show();
@@ -1029,10 +1029,10 @@ void MainWindow::processURLs(QList<QUrl> urls)
                     receivedData.insert(it->first, it->second);
                 emit APPLICATION->oauthReplyRecieved(receivedData);
                 continue;
-            } else if ((url.scheme() == "prismlauncher" || url.scheme() == BuildConfig.LAUNCHER_APP_BINARY_NAME) && isExternalURLImport) {
-                // PrismLauncher URL protocol modpack import
-                // works for any prism fork
-                // preferred import format: prismlauncher://import?url=ENCODED
+            } else if ((url.scheme() == "hypercorelauncher" || url.scheme() == BuildConfig.LAUNCHER_APP_BINARY_NAME) && isExternalURLImport) {
+                // HyperCoreLauncher URL protocol modpack import
+                // works for any HyperCore/Prism fork
+                // preferred import format: hypercorelauncher://import?url=ENCODED
                 const auto host = url.host().toLower();
                 const auto path = url.path();
 
@@ -1046,7 +1046,7 @@ void MainWindow::processURLs(QList<QUrl> urls)
                     }
                 }
 
-                // alternative import format: prismlauncher://import/ENCODED
+                // alternative import format: hypercorelauncher://import/ENCODED
                 if (encodedTarget.isEmpty()) {
                     QString p = path;
 
@@ -1384,7 +1384,7 @@ void MainWindow::globalSettingsClosed()
     updateStatusCenter();
     updateCatState();
     // This needs to be done to prevent UI elements disappearing in the event the config is changed
-    // but Prism Launcher exits abnormally, causing the window state to never be saved:
+    // but HyperCore Launcher exits abnormally, causing the window state to never be saved:
     APPLICATION->settings()->set("MainWindowState", QString::fromUtf8(saveState().toBase64()));
     update();
 }

@@ -43,7 +43,7 @@ LocalResourceUpdateTask::LocalResourceUpdateTask(const QDir& indexDir,
     if (indexDir.dirName().startsWith('.')) {
         SetFileAttributesW(wpath.c_str(), FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED);
     } else {
-        // fix shaderpacks folder being hidden by Prism Launcher 10.0.1
+        // fix shaderpacks folder being hidden by HyperCore Launcher 10.0.1
         SetFileAttributesW(wpath.c_str(), FILE_ATTRIBUTE_NORMAL);
     }
 #endif

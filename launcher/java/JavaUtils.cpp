@@ -359,7 +359,7 @@ QList<QString> JavaUtils::FindJavaPaths()
     }
 
     candidates.append(getMinecraftJavaBundle());
-    candidates.append(getPrismJavaBundle());
+    candidates.append(getHyperCoreJavaBundle());
     candidates = addJavasFromEnv(candidates);
     candidates.removeDuplicates();
     return candidates;
@@ -413,7 +413,7 @@ QList<QString> JavaUtils::FindJavaPaths()
     }
 
     javas.append(getMinecraftJavaBundle());
-    javas.append(getPrismJavaBundle());
+    javas.append(getHyperCoreJavaBundle());
     javas = addJavasFromEnv(javas);
     javas.removeDuplicates();
     return javas;
@@ -470,7 +470,7 @@ QList<QString> JavaUtils::FindJavaPaths()
     scanJavaDir("/usr/lib", gentooFilter);
     scanJavaDir("/opt", gentooFilter);
     scanJavaDir("/usr/lib", aoscFilter);
-    // javas stored in Prism Launcher's folder
+    // javas stored in HyperCore Launcher's folder
     scanJavaDirs("java");
     // manually installed JDKs in /opt
     scanJavaDirs("/opt/jdk");
@@ -497,7 +497,7 @@ QList<QString> JavaUtils::FindJavaPaths()
     scanJavaDirs(FS::PathCombine(gradleUserHome, "jdks"));
 
     javas.append(getMinecraftJavaBundle());
-    javas.append(getPrismJavaBundle());
+    javas.append(getHyperCoreJavaBundle());
     javas = addJavasFromEnv(javas);
     javas.removeDuplicates();
     return javas;
@@ -511,7 +511,7 @@ QList<QString> JavaUtils::FindJavaPaths()
     javas.append(this->GetDefaultJava()->path);
 
     javas.append(getMinecraftJavaBundle());
-    javas.append(getPrismJavaBundle());
+    javas.append(getHyperCoreJavaBundle());
     javas.removeDuplicates();
     return addJavasFromEnv(javas);
 }
@@ -578,7 +578,7 @@ const QString JavaUtils::javaExecutable = "javaw.exe";
 const QString JavaUtils::javaExecutable = "java";
 #endif
 
-QStringList getPrismJavaBundle()
+QStringList getHyperCoreJavaBundle()
 {
     QList<QString> javas;
 

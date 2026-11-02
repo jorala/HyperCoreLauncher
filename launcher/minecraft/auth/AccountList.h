@@ -46,7 +46,7 @@
 
 /*!
  * List of available Mojang accounts.
- * This should be loaded in the background by Prism Launcher on startup.
+ * This should be loaded in the background by HyperCore Launcher on startup.
  */
 class AccountList : public QAbstractListModel {
     Q_OBJECT
