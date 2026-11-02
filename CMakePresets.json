@@ -27,7 +27,10 @@
             ],
             "cacheVariables": {
                 "Launcher_BUILD_ARTIFACT": "$penv{ARTIFACT_NAME}",
-                "Launcher_BUILD_PLATFORM": "$penv{BUILD_PLATFORM}"
+                "Launcher_BUILD_PLATFORM": "$penv{BUILD_PLATFORM}",
+                "Launcher_MSA_CLIENT_ID": "$penv{HYPERCORE_MSA_CLIENT_ID}",
+                "Launcher_CURSEFORGE_API_KEY": "$penv{HYPERCORE_CURSEFORGE_API_KEY}",
+                "Launcher_IMGUR_CLIENT_ID": "$penv{HYPERCORE_IMGUR_CLIENT_ID}"
             }
         },
         {

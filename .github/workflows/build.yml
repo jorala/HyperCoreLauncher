@@ -105,6 +105,10 @@ jobs:
       ##
 
       - name: Configure project
+        env:
+          HYPERCORE_MSA_CLIENT_ID: ${{ secrets.MSA_CLIENT_ID }}
+          HYPERCORE_CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+          HYPERCORE_IMGUR_CLIENT_ID: ${{ secrets.IMGUR_CLIENT_ID }}
         run: |
           cmake --preset "$CMAKE_PRESET" -D VCPKG_HOST_TRIPLET="$VCPKG_TRIPLET" -D VCPKG_TARGET_TRIPLET="$VCPKG_TRIPLET"
 
