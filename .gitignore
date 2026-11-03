@@ -47,10 +47,6 @@ run/
 
 .cache/
 
-# Nix/NixOS
-.direnv/
-## Used when manually invoking stdenv phases
-outputs/
 ## Regular artifacts
 result
 result-*
