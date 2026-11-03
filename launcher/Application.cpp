@@ -1280,7 +1280,8 @@ bool Application::createSetupWizard()
             if (QApplication::style()->name() == "breeze") {
                 defaultIconTheme = darkMode ? "breeze_dark" : "breeze_light";
             } else {
-                defaultIconTheme = darkMode ? "flat_white" : "flat";
+                // the default HyperCore theme is dark, so always use the light (white) icons
+                defaultIconTheme = "flat_white";
             }
 
             settings()->set("IconTheme", defaultIconTheme);
@@ -1289,7 +1290,7 @@ bool Application::createSetupWizard()
 #if defined(Q_OS_LINUX)
             const QString style = "system";
 #else
-            const QString style = darkMode ? QStringLiteral("dark") : QStringLiteral("bright");
+            const QString style = QStringLiteral("hypercore");
 
 #endif
 

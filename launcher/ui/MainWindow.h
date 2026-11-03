@@ -228,6 +228,7 @@ class MainWindow : public QMainWindow {
     void updateInstanceToolIcon(QString new_icon);
     void setSelectedInstanceById(const QString& id);
     void updateStatusCenter();
+    void updateVersionLabel();
     void setInstanceActionsEnabled(bool enabled);
 
     void runModalTask(Task* task);
@@ -243,6 +244,9 @@ class MainWindow : public QMainWindow {
     QToolButton* newsLabel = nullptr;
     QLabel* m_statusLeft = nullptr;
     QLabel* m_statusCenter = nullptr;
+    QToolBar* m_headerToolBar = nullptr;
+    QLabel* m_versionLabel = nullptr;
+    QAction* m_statusCenterAction = nullptr;
     QToolButton* m_changeIconButton = nullptr;
     QAction* m_instanceToolBarTopSeparator = nullptr;
     QAction* m_instanceInfoWidget = nullptr;

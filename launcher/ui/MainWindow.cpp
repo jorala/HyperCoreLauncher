@@ -206,6 +206,39 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         m_instanceToolBarTopSeparator = ui->instanceToolBar->insertSeparator(ui->actionLaunchInstance);
     }
 
+    // HyperCore header bar: selected Minecraft version, account and total playtime
+    {
+        m_headerToolBar = new QToolBar(tr("Header"), this);
+        m_headerToolBar->setObjectName(QStringLiteral("headerToolBar"));
+        m_headerToolBar->setMovable(false);
+        m_headerToolBar->setFloatable(false);
+        m_headerToolBar->setAllowedAreas(Qt::TopToolBarArea);
+        m_headerToolBar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        m_headerToolBar->setContextMenuPolicy(Qt::PreventContextMenu);
+
+        auto makeSpacer = [this]() {
+            auto* spacer = new QWidget(m_headerToolBar);
+            spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+            return spacer;
+        };
+
+        m_versionLabel = new QLabel(tr("Minecraft Version"), m_headerToolBar);
+        m_versionLabel->setObjectName(QStringLiteral("versionLabel"));
+        m_statusCenter = new QLabel(tr("Total playtime: 0s"), m_headerToolBar);
+        m_statusCenter->setObjectName(QStringLiteral("playtimeLabel"));
+
+        // the account button moves from the bottom bar to the header
+        ui->mainToolBar->removeAction(ui->actionAccountsButton);
+
+        m_headerToolBar->addWidget(makeSpacer());
+        m_headerToolBar->addWidget(m_versionLabel);
+        m_headerToolBar->addAction(ui->actionAccountsButton);
+        m_statusCenterAction = m_headerToolBar->addWidget(m_statusCenter);
+        m_headerToolBar->addWidget(makeSpacer());
+
+        addToolBar(Qt::TopToolBarArea, m_headerToolBar);
+    }
+
     // set the menu for the folders help, accounts, and export tool buttons
     {
         auto foldersMenuButton = dynamic_cast<QToolButton*>(ui->mainToolBar->widgetForAction(ui->actionFoldersButton));
@@ -218,7 +251,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         ui->actionHelpButton->menu()->removeAction(ui->actionCheckUpdate);
         helpMenuButton->setPopupMode(QToolButton::InstantPopup);
 
-        auto accountMenuButton = dynamic_cast<QToolButton*>(ui->mainToolBar->widgetForAction(ui->actionAccountsButton));
+        auto accountMenuButton = dynamic_cast<QToolButton*>(m_headerToolBar->widgetForAction(ui->actionAccountsButton));
         accountMenuButton->setPopupMode(QToolButton::InstantPopup);
 
         auto exportInstanceMenu = new QMenu(this);
@@ -373,14 +406,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     connect(APPLICATION, &Application::globalSettingsApplied, this, &MainWindow::globalSettingsClosed);
 
     m_statusLeft = new QLabel(tr("No instance selected"), this);
-    m_statusCenter = new QLabel(tr("Total playtime: 0s"), this);
     statusBar()->addPermanentWidget(m_statusLeft, 1);
-    statusBar()->addPermanentWidget(m_statusCenter, 0);
-
-    // Add "manage accounts" button, right align
-    QWidget* spacer = new QWidget();
-    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    ui->mainToolBar->insertWidget(ui->actionAccountsButton, spacer);
 
     // Use undocumented property... https://stackoverflow.com/questions/7121718/create-a-scrollbar-in-a-submenu-qt
     ui->accountsMenu->setStyleSheet("QMenu { menu-scrollable: 1; }");
@@ -1685,6 +1711,7 @@ void MainWindow::instanceChanged(const QModelIndex& current, [[maybe_unused]] co
         m_nameLabel->setText(m_selectedInstance->name());
         m_statusLeft->setText(m_selectedInstance->getStatusbarDescription());
         updateStatusCenter();
+        updateVersionLabel();
         updateInstanceToolIcon(m_selectedInstance->iconKey());
 
         updateLaunchButton();
@@ -1726,6 +1753,7 @@ void MainWindow::selectionBad()
     updateLaunchButton();
     m_nameLabel->setText(tr("No Instance Selected"));
     updateInstanceToolIcon("default");
+    updateVersionLabel();
 
     // ...and then see if we can enable the previously selected instance
     setSelectedInstanceById(APPLICATION->settings()->get("SelectedInstance").toString());
@@ -1764,9 +1792,24 @@ void MainWindow::checkInstancePathForProblems()
     }
 }
 
+void MainWindow::updateVersionLabel()
+{
+    QString text = tr("Minecraft Version");
+    if (m_selectedInstance) {
+        if (auto* packProfile = m_selectedInstance->getPackProfile()) {
+            const QString version = packProfile->getComponentVersion("net.minecraft");
+            if (!version.isEmpty()) {
+                text = tr("Minecraft %1").arg(version);
+            }
+        }
+    }
+    m_versionLabel->setText(text);
+}
+
 void MainWindow::updateStatusCenter()
 {
-    m_statusCenter->setVisible(APPLICATION->settings()->get("ShowGlobalGameTime").toBool());
+    // toolbar-managed widgets are shown/hidden through their action
+    m_statusCenterAction->setVisible(APPLICATION->settings()->get("ShowGlobalGameTime").toBool());
     int64_t timePlayed = APPLICATION->playtimeSettings()->get("TotalPlayTime").toLongLong();
     if (timePlayed > 0) {
         m_statusCenter->setText(
