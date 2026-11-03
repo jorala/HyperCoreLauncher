@@ -42,6 +42,7 @@
 #include <QtMath>
 
 #include <QIcon>
+#include <QMenu>
 #include <QTextEdit>
 #include "BaseInstance.h"
 #include "InstanceList.h"
@@ -113,21 +114,65 @@ void drawBadges(QPainter* painter, const QStyleOptionViewItem& option, BaseInsta
     painter->translate(-option.rect.topLeft());
 }
 
-static QSize viewItemTextSize(const QStyleOptionViewItem* option)
+namespace {
+// card geometry (pixels)
+constexpr int kCardRadius = 22;
+constexpr int kPadding = 14;
+constexpr int kIconSize = 56;
+constexpr int kNameHeight = 36;
+constexpr int kRowHeight = 28;
+constexpr int kSeparatorHeight = 14;
+constexpr int kArrowWidth = 28;
+constexpr int kActionsTop = kPadding + kIconSize + 6 + kNameHeight + 10;
+}  // namespace
+
+int ListViewDelegate::cardHeight() const
 {
-    QStyle* style = option->widget ? option->widget->style() : QApplication::style();
-    QTextOption textOption;
-    textOption.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
-    QTextLayout textLayout;
-    textLayout.setTextOption(textOption);
-    textLayout.setFont(option->font);
-    textLayout.setText(option->text);
-    const int textMargin = style->pixelMetric(QStyle::PM_FocusFrameHMargin, option, option->widget) + 1;
-    QRect bounds(0, 0, 100 - 2 * textMargin, 600);
-    qreal height = 0, widthUsed = 0;
-    viewItemTextLayout(textLayout, bounds.width(), height, widthUsed);
-    const QSize size(qCeil(widthUsed), qCeil(height));
-    return QSize(size.width() + 2 * textMargin, size.height());
+    int height = kActionsTop + kPadding;
+    for (auto* action : m_cardActions) {
+        height += action ? kRowHeight : kSeparatorHeight;
+    }
+    return height;
+}
+
+QRect ListViewDelegate::nameRect(const QRect& card) const
+{
+    return QRect(card.left() + kPadding, card.top() + kPadding + kIconSize + 6, card.width() - 2 * kPadding, kNameHeight);
+}
+
+QList<QRect> ListViewDelegate::actionRects(const QRect& card) const
+{
+    QList<QRect> rects;
+    int y = card.top() + kActionsTop;
+    for (auto* action : m_cardActions) {
+        if (action) {
+            rects.append(QRect(card.left() + kPadding, y, card.width() - 2 * kPadding, kRowHeight));
+            y += kRowHeight;
+        } else {
+            rects.append(QRect(card.left() + kPadding, y, card.width() - 2 * kPadding, kSeparatorHeight));
+            y += kSeparatorHeight;
+        }
+    }
+    return rects;
+}
+
+QAction* ListViewDelegate::actionAt(const QRect& itemRect, const QPoint& pos, QRect* rowRect, bool* onMenuArrow) const
+{
+    const QList<QRect> rects = actionRects(itemRect.adjusted(2, 2, -2, -2));
+    for (qsizetype i = 0; i < m_cardActions.size() && i < rects.size(); ++i) {
+        QAction* action = m_cardActions[i];
+        if (!action || !action->isVisible() || !action->isEnabled() || !rects[i].contains(pos)) {
+            continue;
+        }
+        if (rowRect) {
+            *rowRect = rects[i];
+        }
+        if (onMenuArrow) {
+            *onMenuArrow = action->menu() != nullptr && pos.x() >= rects[i].right() - kArrowWidth;
+        }
+        return action;
+    }
+    return nullptr;
 }
 
 void ListViewDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const
@@ -136,70 +181,112 @@ void ListViewDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     initStyleOption(&opt, index);
     painter->save();
     painter->setClipRect(opt.rect);
+    painter->setRenderHint(QPainter::Antialiasing, true);
 
     opt.features |= QStyleOptionViewItem::WrapText;
     opt.text = index.data().toString();
     opt.textElideMode = Qt::ElideRight;
     opt.displayAlignment = Qt::AlignTop | Qt::AlignHCenter;
 
-    QStyle* style = opt.widget ? opt.widget->style() : QApplication::style();
+    const bool selected = opt.state.testFlag(QStyle::State_Selected);
+    const QRect card = opt.rect.adjusted(2, 2, -2, -2);
 
-    const int iconSize = 48;
-    QRect iconbox = opt.rect;
-    const int textMargin = style->pixelMetric(QStyle::PM_FocusFrameHMargin, 0, opt.widget) + 1;
-    QRect textRect = opt.rect;
-    QRect textHighlightRect = textRect;
-    // clip the decoration on top, remove width padding
-    textRect.adjust(textMargin, iconSize + textMargin + 5, -textMargin, 0);
+    // colors: the card is darker than the view background, the selected card gets an accent outline
+    const QColor base = opt.palette.color(QPalette::Base);
+    const QColor cardColor = base.lightness() > 128 ? base.darker(105) : base.darker(170);
+    QPalette::ColorGroup cg = opt.state & QStyle::State_Enabled ? QPalette::Normal : QPalette::Disabled;
+    if (cg == QPalette::Normal && !(opt.state & QStyle::State_Active))
+        cg = QPalette::Inactive;
+    const QColor textColor = opt.palette.color(cg, QPalette::Text);
 
-    textHighlightRect.adjust(0, iconSize + 5, 0, 0);
-
-    // draw background
-    drawSelectionRect(painter, opt, textHighlightRect);
+    // draw the card
+    painter->setBrush(cardColor);
+    if (selected) {
+        painter->setPen(QPen(opt.palette.color(QPalette::Highlight), 2));
+    } else {
+        painter->setPen(Qt::NoPen);
+    }
+    painter->drawRoundedRect(card, kCardRadius, kCardRadius);
 
     // icon mode and state, also used for badges
     QIcon::Mode mode = QIcon::Normal;
     if (!(opt.state & QStyle::State_Enabled))
         mode = QIcon::Disabled;
-    else if (opt.state & QStyle::State_Selected)
-        mode = QIcon::Selected;
     QIcon::State state = opt.state & QStyle::State_Open ? QIcon::On : QIcon::Off;
 
     // draw the icon
     {
-        iconbox.setHeight(iconSize);
+        QRect iconbox(card.left(), card.top() + kPadding, card.width(), kIconSize);
         opt.icon.paint(painter, iconbox, Qt::AlignCenter, mode, state);
     }
-    // set the text colors
-    QPalette::ColorGroup cg = opt.state & QStyle::State_Enabled ? QPalette::Normal : QPalette::Disabled;
-    if (cg == QPalette::Normal && !(opt.state & QStyle::State_Active))
-        cg = QPalette::Inactive;
-    if (opt.state & QStyle::State_Selected) {
-        painter->setPen(opt.palette.color(cg, QPalette::HighlightedText));
-    } else {
-        painter->setPen(opt.palette.color(cg, QPalette::Text));
+
+    // draw the name
+    {
+        painter->setPen(textColor);
+        QTextOption textOption;
+        textOption.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+        textOption.setTextDirection(opt.direction);
+        textOption.setAlignment(QStyle::visualAlignment(opt.direction, opt.displayAlignment));
+        QTextLayout textLayout;
+        textLayout.setTextOption(textOption);
+        textLayout.setFont(opt.font);
+        textLayout.setText(opt.text);
+
+        const QRect textRect = nameRect(card);
+        qreal width, height;
+        viewItemTextLayout(textLayout, textRect.width(), height, width);
+
+        const QRect layoutRect = QStyle::alignedRect(opt.direction, opt.displayAlignment, QSize(textRect.width(), int(height)), textRect);
+        const QPointF position = layoutRect.topLeft();
+        painter->save();
+        painter->setClipRect(textRect);
+        for (int i = 0; i < textLayout.lineCount(); ++i) {
+            textLayout.lineAt(i).draw(painter, position);
+        }
+        painter->restore();
     }
 
-    // draw the text
-    QTextOption textOption;
-    textOption.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
-    textOption.setTextDirection(opt.direction);
-    textOption.setAlignment(QStyle::visualAlignment(opt.direction, opt.displayAlignment));
-    QTextLayout textLayout;
-    textLayout.setTextOption(textOption);
-    textLayout.setFont(opt.font);
-    textLayout.setText(opt.text);
+    // the selected card shows its actions
+    if (selected && !m_cardActions.isEmpty()) {
+        const QList<QRect> rects = actionRects(card);
+        for (qsizetype i = 0; i < m_cardActions.size() && i < rects.size(); ++i) {
+            QAction* action = m_cardActions[i];
+            const QRect& row = rects[i];
+            if (!action) {
+                QColor line = textColor;
+                line.setAlphaF(0.15f);
+                painter->setPen(line);
+                painter->drawLine(row.left(), row.center().y(), row.right(), row.center().y());
+                continue;
+            }
+            if (!action->isVisible()) {
+                continue;
+            }
 
-    qreal width, height;
-    viewItemTextLayout(textLayout, textRect.width(), height, width);
+            const bool enabled = action->isEnabled();
+            const QColor rowColor =
+                enabled ? opt.palette.color(QPalette::Active, QPalette::Text) : opt.palette.color(QPalette::Disabled, QPalette::Text);
+            painter->setPen(rowColor);
 
-    const int lineCount = textLayout.lineCount();
+            const QRect iconRect(row.left() + 8, row.center().y() - 9, 18, 18);
+            action->icon().paint(painter, iconRect, Qt::AlignCenter, enabled ? QIcon::Normal : QIcon::Disabled);
 
-    const QRect layoutRect = QStyle::alignedRect(opt.direction, opt.displayAlignment, QSize(textRect.width(), int(height)), textRect);
-    const QPointF position = layoutRect.topLeft();
-    for (int i = 0; i < lineCount; ++i) {
-        const QTextLine line = textLayout.lineAt(i);
-        line.draw(painter, position);
+            QRect labelRect = row.adjusted(34, 0, action->menu() ? -kArrowWidth : -4, 0);
+            painter->drawText(labelRect, Qt::AlignVCenter | Qt::AlignLeft,
+                              painter->fontMetrics().elidedText(action->iconText(), Qt::ElideRight, labelRect.width()));
+
+            if (action->menu()) {
+                QColor divider = rowColor;
+                divider.setAlphaF(0.2f);
+                painter->setPen(divider);
+                painter->drawLine(row.right() - kArrowWidth, row.top() + 5, row.right() - kArrowWidth, row.bottom() - 5);
+
+                painter->setPen(QPen(rowColor, 1.5));
+                const QPoint c(row.right() - kArrowWidth / 2, row.center().y());
+                const QPoint chevron[3] = { c + QPoint(-3, -1), c + QPoint(0, 2), c + QPoint(3, -1) };
+                painter->drawPolyline(chevron, 3);
+            }
+        }
     }
 
     // FIXME: this really has no business of being here. Make generic.
@@ -211,23 +298,10 @@ void ListViewDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     painter->restore();
 }
 
-QSize ListViewDelegate::sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const
+QSize ListViewDelegate::sizeHint([[maybe_unused]] const QStyleOptionViewItem& option, [[maybe_unused]] const QModelIndex& index) const
 {
-    QStyleOptionViewItem opt = option;
-    initStyleOption(&opt, index);
-    opt.features |= QStyleOptionViewItem::WrapText;
-    opt.text = index.data().toString();
-    opt.textElideMode = Qt::ElideRight;
-    opt.displayAlignment = Qt::AlignTop | Qt::AlignHCenter;
-
-    QStyle* style = opt.widget ? opt.widget->style() : QApplication::style();
-    const int textMargin = style->pixelMetric(QStyle::PM_FocusFrameHMargin, &option, opt.widget) + 1;
-    int height = 48 + textMargin * 2 + 5;  // TODO: turn constants into variables
-    QSize szz = viewItemTextSize(&opt);
-    height += szz.height();
-    // FIXME: maybe the icon items could scale and keep proportions?
-    QSize sz(100, height);
-    return sz;
+    // every card has the same size, so the cards line up like in the layout mockup
+    return QSize(CardWidth, cardHeight());
 }
 
 class NoReturnTextEdit : public QTextEdit {
@@ -263,10 +337,7 @@ void ListViewDelegate::updateEditorGeometry(QWidget* editor,
                                             const QStyleOptionViewItem& option,
                                             [[maybe_unused]] const QModelIndex& index) const
 {
-    const int iconSize = 48;
-    QRect textRect = option.rect;
-    textRect.adjust(0, iconSize + 5, 0, 0);
-    editor->setGeometry(textRect);
+    editor->setGeometry(nameRect(option.rect.adjusted(2, 2, -2, -2)));
 }
 
 void ListViewDelegate::setEditorData(QWidget* editor, const QModelIndex& index) const

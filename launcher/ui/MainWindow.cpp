@@ -274,6 +274,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         ui->actionAddToPATH->setVisible(false);
 #endif
 
+        // the actions now live inside the selected instance card; the old side toolbar can still be shown from the View menu
+        ui->instanceToolBar->setVisible(false);
+
         // disabled until we have an instance selected
         ui->instanceToolBar->setEnabled(false);
         setInstanceActionsEnabled(false);
@@ -349,6 +352,17 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         // do not show ugly blue border on the mac
         view->setAttribute(Qt::WA_MacShowFocusRect, false);
         connect(delegate, &ListViewDelegate::textChanged, this, &MainWindow::handleInstanceRename);
+
+        // the selected instance card shows these actions (nullptr = separator)
+        delegate->setCardActions({ ui->actionLaunchInstance, ui->actionKillInstance, nullptr, ui->actionEditInstance,
+                                   ui->actionChangeInstGroup, ui->actionViewSelectedInstFolder, ui->actionExportInstance,
+                                   ui->actionCopyInstance, ui->actionDeleteInstance, ui->actionCreateInstanceShortcut });
+        // keep their keyboard shortcuts working now that the instance toolbar is hidden by default
+        for (auto* cardAction : delegate->cardActions()) {
+            if (cardAction) {
+                view->addAction(cardAction);
+            }
+        }
 
         view->installEventFilter(this);
         view->setContextMenuPolicy(Qt::CustomContextMenu);

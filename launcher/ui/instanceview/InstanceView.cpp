@@ -36,11 +36,13 @@
 #include "InstanceView.h"
 
 #include <QAccessible>
+#include <QAction>
 #include <QApplication>
 #include <QCache>
 #include <QDrag>
 #include <QFont>
 #include <QListView>
+#include <QMenu>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
@@ -48,6 +50,7 @@
 #include <QScrollBar>
 #include <QtMath>
 
+#include "InstanceDelegate.h"
 #include "VisualGroup.h"
 #include "ui/themes/CatPainter.h"
 #include "ui/themes/ThemeManager.h"
@@ -57,6 +60,8 @@
 
 InstanceView::InstanceView(QWidget* parent) : QAbstractItemView(parent)
 {
+    // every cell is one instance card
+    m_itemWidth = ListViewDelegate::CardWidth;
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     setAcceptDrops(true);
@@ -387,6 +392,25 @@ void InstanceView::mouseReleaseEvent(QMouseEvent* event)
         }
     }
 
+    // a click on one of the action rows shown inside the (already selected) card
+    if (event->button() == Qt::LeftButton && index.isValid() && index == m_pressedIndex && m_pressedAlreadySelected) {
+        if (auto* cardDelegate = qobject_cast<ListViewDelegate*>(itemDelegate())) {
+            QRect row;
+            bool onArrow = false;
+            if (QAction* action = cardDelegate->actionAt(visualRect(index), visualPos, &row, &onArrow)) {
+                m_ctrlDragSelectionFlag = QItemSelectionModel::NoUpdate;
+                setState(NoState);
+                if (onArrow && action->menu()) {
+                    action->menu()->popup(viewport()->mapToGlobal(row.bottomLeft()));
+                } else {
+                    action->trigger();
+                }
+                event->accept();
+                return;
+            }
+        }
+    }
+
     m_ctrlDragSelectionFlag = QItemSelectionModel::NoUpdate;
 
     setState(NoState);
@@ -418,6 +442,15 @@ void InstanceView::mouseDoubleClickEvent(QMouseEvent* event)
         mousePressEvent(&me);
         return;
     }
+    // a double click on an action row must not also launch the instance
+    if (auto* cardDelegate = qobject_cast<ListViewDelegate*>(itemDelegate())) {
+        if (selectionModel()->isSelected(index) && cardDelegate->actionAt(visualRect(index), event->pos())) {
+            m_pressedIndex = QModelIndex();
+            event->accept();
+            return;
+        }
+    }
+
     // signal handlers may change the model
     QPersistentModelIndex persistent = index;
     emit doubleClicked(persistent);
