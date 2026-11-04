@@ -64,7 +64,8 @@ InstanceView::InstanceView(QWidget* parent) : QAbstractItemView(parent)
     m_itemWidth = ListViewDelegate::CardWidth;
     setMinimumWidth(m_leftMargin + m_rightMargin + m_itemWidth + m_spacing + 30);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setMouseTracking(true);
     setAcceptDrops(true);
     setAutoScroll(true);
     setPaintCat(APPLICATION->settings()->get("TheCat").toBool());
@@ -148,17 +149,20 @@ inline bool operator<(const LocaleString& lhs, const LocaleString& rhs)
 
 void InstanceView::updateScrollbar()
 {
-    int previousScroll = verticalScrollBar()->value();
+    const int previousScroll = verticalScrollBar()->value();
+    const int previousHScroll = horizontalScrollBar()->value();
     if (m_groups.isEmpty()) {
         verticalScrollBar()->setRange(0, 0);
+        horizontalScrollBar()->setRange(0, 0);
     } else {
-        int totalHeight = 0;
-        // top margin
-        totalHeight += m_categoryMargin;
+        int tallest = 0;
         int itemScroll = 0;
+        int x = m_leftMargin;
         for (auto category : m_groups) {
-            category->m_verticalPosition = totalHeight;
-            totalHeight += category->totalHeight() + m_categoryMargin;
+            category->m_verticalPosition = m_categoryMargin;
+            category->m_horizontalPosition = x;
+            x += columnWidth() + m_columnGap;
+            tallest = qMax(tallest, m_categoryMargin + category->totalHeight());
             if (!itemScroll && category->totalHeight() != 0) {
                 itemScroll = category->contentHeight() / category->numRows();
             }
@@ -166,16 +170,21 @@ void InstanceView::updateScrollbar()
         // do not divide by zero
         if (itemScroll == 0)
             itemScroll = 64;
+        tallest += m_bottomMargin;
+        const int totalWidth = x - m_columnGap + m_rightMargin;
 
-        totalHeight += m_bottomMargin;
         verticalScrollBar()->setSingleStep(itemScroll);
         const int rowsPerPage = qMax(viewport()->height() / itemScroll, 1);
         verticalScrollBar()->setPageStep(rowsPerPage * itemScroll);
+        verticalScrollBar()->setRange(0, qMax(0, tallest - viewport()->height()));
 
-        verticalScrollBar()->setRange(0, totalHeight - height());
+        horizontalScrollBar()->setSingleStep(columnWidth());
+        horizontalScrollBar()->setPageStep(viewport()->width());
+        horizontalScrollBar()->setRange(0, qMax(0, totalWidth - viewport()->width()));
     }
 
     verticalScrollBar()->setValue(qMin(previousScroll, verticalScrollBar()->maximum()));
+    horizontalScrollBar()->setValue(qMin(previousHScroll, horizontalScrollBar()->maximum()));
 }
 
 void InstanceView::updateGeometries()
@@ -260,7 +269,8 @@ QString InstanceView::groupNameAt(const QPoint& point)
 
 int InstanceView::calculateItemsPerRow() const
 {
-    return qMax(1, qFloor((qreal)(contentWidth()) / (qreal)(itemWidth() + m_spacing)));
+    // groups are columns, every card sits in its own row
+    return 1;
 }
 
 int InstanceView::contentWidth() const
@@ -319,9 +329,43 @@ void InstanceView::mousePressEvent(QMouseEvent* event)
     }
 }
 
+void InstanceView::leaveEvent(QEvent* event)
+{
+    m_hoverPos = QPoint(-1, -1);
+    if (auto* cardDelegate = qobject_cast<ListViewDelegate*>(itemDelegate())) {
+        cardDelegate->setHoverPos(m_hoverPos);
+    }
+    viewport()->update();
+    QAbstractItemView::leaveEvent(event);
+}
+
+void InstanceView::wheelEvent(QWheelEvent* event)
+{
+    // no scrollbars: a vertical wheel scrolls the cards, and moves sideways when there is nothing to scroll vertically
+    if (verticalScrollBar()->maximum() == 0 && event->angleDelta().x() == 0 && horizontalScrollBar()->maximum() > 0) {
+        horizontalScrollBar()->setValue(horizontalScrollBar()->value() - event->angleDelta().y());
+        event->accept();
+        return;
+    }
+    if (event->modifiers() & Qt::ShiftModifier) {
+        horizontalScrollBar()->setValue(horizontalScrollBar()->value() - event->angleDelta().y());
+        event->accept();
+        return;
+    }
+    QAbstractItemView::wheelEvent(event);
+}
+
 void InstanceView::mouseMoveEvent(QMouseEvent* event)
 {
     executeDelayedItemsLayout();
+
+    if (m_hoverPos != event->pos()) {
+        m_hoverPos = event->pos();
+        if (auto* cardDelegate = qobject_cast<ListViewDelegate*>(itemDelegate())) {
+            cardDelegate->setHoverPos(m_hoverPos);
+        }
+        viewport()->update();
+    }
 
     QPoint topLeft;
     QPoint visualPos = event->pos();
@@ -548,8 +592,13 @@ void InstanceView::paintEvent(QPaintEvent* event)
         int height = category->totalHeight();
         option.rect.setTop(y);
         option.rect.setHeight(height);
-        option.rect.setLeft(m_leftMargin);
-        option.rect.setRight(wpWidth - m_rightMargin);
+        const int columnLeft = category->m_horizontalPosition - horizontalOffset();
+        if (columnLeft + columnWidth() < 0 || columnLeft > wpWidth) {
+            option.rect = backup;
+            continue;
+        }
+        option.rect.setLeft(columnLeft);
+        option.rect.setWidth(columnWidth());
         category->drawHeader(&painter, option);
         option.rect = backup;
     }
@@ -571,6 +620,11 @@ void InstanceView::paintEvent(QPaintEvent* event)
             option.state &= ~QStyle::State_Selected;
         }
         option.state |= (index == currentIndex()) ? QStyle::State_HasFocus : QStyle::State_None;
+        if (option.rect.contains(m_hoverPos) && state() != DraggingState) {
+            option.state |= QStyle::State_MouseOver;
+        } else {
+            option.state &= ~QStyle::State_MouseOver;
+        }
         if (!(flags & Qt::ItemIsEnabled)) {
             option.state &= ~QStyle::State_Enabled;
         }
@@ -764,7 +818,7 @@ QRect InstanceView::geometryRect(const QModelIndex& index) const
 
     QRect out;
     out.setTop(cat->verticalPosition() + cat->headerHeight() + 5 + cat->rowTopOf(index));
-    out.setLeft(m_spacing + x * (itemWidth() + m_spacing));
+    out.setLeft(cat->m_horizontalPosition + m_spacing + x * (itemWidth() + m_spacing));
     out.setSize(itemDelegate()->sizeHint(option, index));
     m_geometryCache.insert(row, new QRect(out));
     return out;
@@ -1032,6 +1086,11 @@ void InstanceView::scrollTo(const QModelIndex& index, ScrollHint hint)
     }
 
     verticalScrollBar()->setValue(verticalScrollToValue(index, rect, hint));
+    if (rect.left() < 0) {
+        horizontalScrollBar()->setValue(horizontalScrollBar()->value() + rect.left() - m_spacing);
+    } else if (rect.right() > viewport()->width()) {
+        horizontalScrollBar()->setValue(horizontalScrollBar()->value() + rect.right() - viewport()->width() + m_spacing);
+    }
 }
 
 int InstanceView::verticalScrollToValue([[maybe_unused]] const QModelIndex& index, const QRect& rect, QListView::ScrollHint hint) const

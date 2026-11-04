@@ -121,8 +121,8 @@ QString HyperCoreTheme::appStyleSheet()
 
                // dialogs: settings, instance editor, new instance
                "QDialog { background: %4; }"
-               "#pageSidebar { background: %3; border: none; border-radius: 14px; padding: 6px; outline: 0; }"
-               "#pageSidebar::item { border-radius: 10px; padding: 8px 10px; margin: 2px 0; }"
+               "#pageSidebar { background: %3; border: none; border-radius: 16px; padding: 4px 6px; outline: 0; }"
+               "#pageSidebar::item { border-radius: 14px; padding: 8px 16px; margin: 2px 3px; }"
                "#pageSidebar::item:hover { background: %6; }"
                "#pageSidebar::item:selected { background: %9; color: #ffffff; }"
                "#pageHeader { font-size: 18px; padding: 4px 0 8px 0; }"

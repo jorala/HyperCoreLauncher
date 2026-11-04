@@ -100,6 +100,8 @@ class InstanceView : public QAbstractItemView {
     bool isIndexHidden(const QModelIndex& index) const override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
+    void leaveEvent(QEvent* event) override;
+    void wheelEvent(QWheelEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void mouseDoubleClickEvent(QMouseEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
@@ -126,6 +128,8 @@ class InstanceView : public QAbstractItemView {
     int m_bottomMargin = 5;
     int m_categoryMargin = 5;
     int m_spacing = 5;
+    int m_columnGap = 14;
+    QPoint m_hoverPos = QPoint(-1, -1);
     int m_itemWidth = 100;
     int m_currentItemsPerRow = -1;
     int m_currentCursorColumn = -1;
@@ -145,6 +149,12 @@ class InstanceView : public QAbstractItemView {
     VisualGroup* categoryAt(const QPoint& pos, VisualGroup::HitResults& result) const;
 
     int itemsPerRow() const { return m_currentItemsPerRow; };
+
+   public:
+    /// width of one group column (groups are laid out side by side, cards stack vertically)
+    int columnWidth() const { return m_itemWidth + 2 * m_spacing; }
+
+   private:
     int contentWidth() const;
 
    private: /* methods */

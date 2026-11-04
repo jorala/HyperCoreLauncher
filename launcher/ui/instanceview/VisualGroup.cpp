@@ -126,15 +126,17 @@ VisualGroup::HitResults VisualGroup::hitScan(const QPoint& pos) const
     int body_start = y_start + headerHeight();
     int body_end = body_start + contentHeight();
     int y = pos.y();
-    // int x = pos.x();
-    if (y < y_start) {
+    const int x = pos.x();
+    if (x < m_horizontalPosition || x >= m_horizontalPosition + view->columnWidth()) {
+        results = VisualGroup::NoHit;
+    } else if (y < y_start) {
         results = VisualGroup::NoHit;
     } else if (y < body_start) {
         results = VisualGroup::HeaderHit;
         int collapseSize = headerHeight() - 4;
 
         // the icon
-        QRect iconRect = QRect(view->m_leftMargin + 2, 2 + y_start, view->width() - 4, collapseSize);
+        QRect iconRect = QRect(m_horizontalPosition + 2, 2 + y_start, view->columnWidth() - 4, collapseSize);
         if (iconRect.contains(pos)) {
             results |= VisualGroup::CheckboxHit;
         }
@@ -156,8 +158,10 @@ void VisualGroup::drawHeader(QPainter* painter, const QStyleOptionViewItem& opti
 
     const QColor textColor = option.palette.text().color();
     const bool light = option.palette.base().color().lightness() > 128;
-    const QString name = text.isEmpty() ? QObject::tr("Ungrouped") : text;
     const QString count = QString::number(items().size());
+    const int badgeMin = fm.height() + 2;
+    const int maxName = qMax(20, option.rect.width() - 32 - 10 - badgeMin - 12);
+    const QString name = fm.elidedText(text.isEmpty() ? QObject::tr("Ungrouped") : text, Qt::ElideRight, maxName);
 
     // pill with chevron + name + count badge
     const int pillHeight = fm.height() + 10;

@@ -43,6 +43,9 @@ class ListViewDelegate : public QStyledItemDelegate {
     void setCardActions(const QList<QAction*>& actions) { m_cardActions = actions; }
     const QList<QAction*>& cardActions() const { return m_cardActions; }
 
+    /// Where the mouse is, in viewport coordinates; cards painted with State_MouseOver highlight the row under it.
+    void setHoverPos(const QPoint& pos) { m_hoverPos = pos; }
+
     /// The enabled action row under \a pos for the card drawn in \a itemRect, or nullptr.
     /// \a rowRect receives the row's rectangle, \a onMenuArrow whether the arrow of an action with a menu was hit.
     QAction* actionAt(const QRect& itemRect, const QPoint& pos, QRect* rowRect = nullptr, bool* onMenuArrow = nullptr) const;
@@ -59,4 +62,5 @@ class ListViewDelegate : public QStyledItemDelegate {
     QRect nameRect(const QRect& card) const;
 
     QList<QAction*> m_cardActions;
+    QPoint m_hoverPos = QPoint(-1, -1);
 };

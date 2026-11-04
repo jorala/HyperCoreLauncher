@@ -199,6 +199,8 @@ void ListViewDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     QColor cardColor = lightTheme ? base.darker(105) : base.darker(170);
     if (selected) {
         cardColor = lightTheme ? cardColor.darker(103) : cardColor.lighter(135);
+    } else if (opt.state.testFlag(QStyle::State_MouseOver)) {
+        cardColor = lightTheme ? cardColor.darker(106) : cardColor.lighter(160);
     }
     QPalette::ColorGroup cg = opt.state & QStyle::State_Enabled ? QPalette::Normal : QPalette::Disabled;
     if (cg == QPalette::Normal && !(opt.state & QStyle::State_Active))
@@ -291,6 +293,15 @@ void ListViewDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
             }
 
             const bool enabled = action->isEnabled();
+
+            // the row under the cursor gets a highlight bar so it is clear what a click will do
+            if (enabled && opt.state.testFlag(QStyle::State_MouseOver) && row.contains(m_hoverPos)) {
+                QColor bar = textColor;
+                bar.setAlphaF(0.16f);
+                painter->setPen(Qt::NoPen);
+                painter->setBrush(bar);
+                painter->drawRoundedRect(row.adjusted(-4, 1, 4, -1), 9, 9);
+            }
             const QColor rowColor =
                 enabled ? opt.palette.color(QPalette::Active, QPalette::Text) : opt.palette.color(QPalette::Disabled, QPalette::Text);
             painter->setPen(rowColor);

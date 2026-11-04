@@ -64,6 +64,8 @@ struct VisualGroup {
     QList<VisualRow> rows;
     int firstItemIndex = 0;
     int m_verticalPosition = 0;
+    /// x of the column this group occupies (groups sit side by side)
+    int m_horizontalPosition = 0;
 
     /* logic */
     /// update the internal list of items and flow them into the rows.

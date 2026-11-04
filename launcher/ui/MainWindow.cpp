@@ -841,16 +841,20 @@ void MainWindow::updateNewsLabel()
         newsLabel->setText(tr("Loading news..."));
         newsLabel->setEnabled(false);
         ui->actionMoreNews->setVisible(false);
+        ui->newsToolBar->setVisible(false);
     } else {
         QList<NewsEntryPtr> entries = m_newsChecker->getNewsEntries();
         if (entries.length() > 0) {
             newsLabel->setText(entries[0]->title);
             newsLabel->setEnabled(true);
             ui->actionMoreNews->setVisible(true);
+            ui->newsToolBar->setVisible(true);
         } else {
             newsLabel->setText(tr("No news available."));
             newsLabel->setEnabled(false);
             ui->actionMoreNews->setVisible(false);
+            // nothing to show: no empty bar at the bottom of the window
+            ui->newsToolBar->setVisible(false);
         }
     }
 }
