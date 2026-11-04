@@ -62,6 +62,7 @@ InstanceView::InstanceView(QWidget* parent) : QAbstractItemView(parent)
 {
     // every cell is one instance card
     m_itemWidth = ListViewDelegate::CardWidth;
+    setMinimumWidth(m_leftMargin + m_rightMargin + m_itemWidth + m_spacing + 30);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     setAcceptDrops(true);
@@ -125,6 +126,13 @@ void InstanceView::currentChanged(const QModelIndex& current, const QModelIndex&
         QAccessible::updateAccessibility(&event);
     }
 #endif /* !QT_NO_ACCESSIBILITY */
+}
+
+void InstanceView::selectionChanged(const QItemSelection& selected, const QItemSelection& deselected)
+{
+    QAbstractItemView::selectionChanged(selected, deselected);
+    // the selected card expands to show its actions, so the cell sizes change
+    scheduleDelayedItemsLayout();
 }
 
 class LocaleString : public QString {
@@ -252,7 +260,7 @@ QString InstanceView::groupNameAt(const QPoint& point)
 
 int InstanceView::calculateItemsPerRow() const
 {
-    return qFloor((qreal)(contentWidth()) / (qreal)(itemWidth() + m_spacing));
+    return qMax(1, qFloor((qreal)(contentWidth()) / (qreal)(itemWidth() + m_spacing)));
 }
 
 int InstanceView::contentWidth() const
@@ -475,7 +483,7 @@ void InstanceView::setPaintCat(bool visible)
     }
 }
 
-void InstanceView::paintEvent([[maybe_unused]] QPaintEvent* event)
+void InstanceView::paintEvent(QPaintEvent* event)
 {
     executeDelayedItemsLayout();
 
@@ -553,6 +561,9 @@ void InstanceView::paintEvent([[maybe_unused]] QPaintEvent* event)
         }
         Qt::ItemFlags flags = index.flags();
         option.rect = visualRect(index);
+        if (!option.rect.intersects(event->rect())) {
+            continue;
+        }
         option.features |= QStyleOptionViewItem::WrapText;
         if (flags & Qt::ItemIsSelectable && selectionModel()->isSelected(index)) {
             option.state |= selectionModel()->isSelected(index) ? QStyle::State_Selected : QStyle::State_None;
@@ -618,7 +629,6 @@ void InstanceView::dragEnterEvent(QDragEnterEvent* event)
         return;
     }
     m_lastDragPosition = event->position().toPoint() + offset();
-    viewport()->update();
     event->accept();
 }
 
@@ -702,10 +712,17 @@ void InstanceView::startDrag(Qt::DropActions supportedActions)
     }
     QRect rect;
     QPixmap pixmap = renderToPixmap(indexes, &rect);
+    QPoint hotSpot = m_pressedPosition - rect.topLeft();
+    constexpr int maxPreviewHeight = 180;
+    if (pixmap.height() > maxPreviewHeight) {
+        const qreal scale = qreal(maxPreviewHeight) / pixmap.height();
+        pixmap = pixmap.scaledToHeight(maxPreviewHeight, Qt::SmoothTransformation);
+        hotSpot = QPoint(qRound(hotSpot.x() * scale), qRound(hotSpot.y() * scale));
+    }
     QDrag* drag = new QDrag(this);
     drag->setPixmap(pixmap);
     drag->setMimeData(mimeData);
-    drag->setHotSpot(m_pressedPosition - rect.topLeft());
+    drag->setHotSpot(hotSpot);
     Qt::DropAction defaultDropAction = Qt::IgnoreAction;
     if (this->defaultDropAction() != Qt::IgnoreAction && (supportedActions & this->defaultDropAction())) {
         defaultDropAction = this->defaultDropAction();
@@ -741,6 +758,9 @@ QRect InstanceView::geometryRect(const QModelIndex& index) const
 
     QStyleOptionViewItem option;
     initViewItemOption(&option);
+    if (selectionModel() && selectionModel()->isSelected(index)) {
+        option.state |= QStyle::State_Selected;
+    }
 
     QRect out;
     out.setTop(cat->verticalPosition() + cat->headerHeight() + 5 + cat->rowTopOf(index));

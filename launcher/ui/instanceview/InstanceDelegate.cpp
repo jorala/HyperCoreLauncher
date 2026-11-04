@@ -44,8 +44,10 @@
 #include <QIcon>
 #include <QMenu>
 #include <QTextEdit>
+#include "Application.h"
 #include "BaseInstance.h"
 #include "InstanceList.h"
+#include "MMCTime.h"
 
 // Origin: Qt
 static void viewItemTextLayout(QTextLayout& textLayout, int lineWidth, qreal& height, qreal& widthUsed)
@@ -120,10 +122,14 @@ constexpr int kCardRadius = 22;
 constexpr int kPadding = 14;
 constexpr int kIconSize = 56;
 constexpr int kNameHeight = 36;
+constexpr int kPlaytimeHeight = 18;
 constexpr int kRowHeight = 28;
 constexpr int kSeparatorHeight = 14;
 constexpr int kArrowWidth = 28;
-constexpr int kActionsTop = kPadding + kIconSize + 6 + kNameHeight + 10;
+// where the action list starts inside a selected card
+constexpr int kActionsTop = kPadding + kIconSize + 6 + kNameHeight + kPlaytimeHeight + 10;
+// an unselected card only shows its icon and name
+constexpr int kCompactHeight = kPadding + kIconSize + 6 + kNameHeight + kPadding;
 }  // namespace
 
 int ListViewDelegate::cardHeight() const
@@ -132,7 +138,7 @@ int ListViewDelegate::cardHeight() const
     for (auto* action : m_cardActions) {
         height += action ? kRowHeight : kSeparatorHeight;
     }
-    return height;
+    return qMax(height, kCompactHeight);
 }
 
 QRect ListViewDelegate::nameRect(const QRect& card) const
@@ -145,13 +151,9 @@ QList<QRect> ListViewDelegate::actionRects(const QRect& card) const
     QList<QRect> rects;
     int y = card.top() + kActionsTop;
     for (auto* action : m_cardActions) {
-        if (action) {
-            rects.append(QRect(card.left() + kPadding, y, card.width() - 2 * kPadding, kRowHeight));
-            y += kRowHeight;
-        } else {
-            rects.append(QRect(card.left() + kPadding, y, card.width() - 2 * kPadding, kSeparatorHeight));
-            y += kSeparatorHeight;
-        }
+        const int height = action ? kRowHeight : kSeparatorHeight;
+        rects.append(QRect(card.left() + kPadding, y, card.width() - 2 * kPadding, height));
+        y += height;
     }
     return rects;
 }
@@ -191,9 +193,13 @@ void ListViewDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     const bool selected = opt.state.testFlag(QStyle::State_Selected);
     const QRect card = opt.rect.adjusted(2, 2, -2, -2);
 
-    // colors: the card is darker than the view background, the selected card gets an accent outline
+    // colors: the card is darker than the view background, the selected card is a bit lighter and gets a gray outline
     const QColor base = opt.palette.color(QPalette::Base);
-    const QColor cardColor = base.lightness() > 128 ? base.darker(105) : base.darker(170);
+    const bool lightTheme = base.lightness() > 128;
+    QColor cardColor = lightTheme ? base.darker(105) : base.darker(170);
+    if (selected) {
+        cardColor = lightTheme ? cardColor.darker(103) : cardColor.lighter(135);
+    }
     QPalette::ColorGroup cg = opt.state & QStyle::State_Enabled ? QPalette::Normal : QPalette::Disabled;
     if (cg == QPalette::Normal && !(opt.state & QStyle::State_Active))
         cg = QPalette::Inactive;
@@ -202,7 +208,9 @@ void ListViewDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     // draw the card
     painter->setBrush(cardColor);
     if (selected) {
-        painter->setPen(QPen(opt.palette.color(QPalette::Highlight), 2));
+        QColor outline = textColor;
+        outline.setAlphaF(0.45f);
+        painter->setPen(QPen(outline, 2));
     } else {
         painter->setPen(Qt::NoPen);
     }
@@ -244,6 +252,25 @@ void ListViewDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
             textLayout.lineAt(i).draw(painter, position);
         }
         painter->restore();
+    }
+
+    // the selected card shows how long the instance was played
+    auto* instance = static_cast<BaseInstance*>(index.data(InstanceList::InstancePointerRole).value<void*>());
+    if (selected && instance) {
+        const int64_t total = instance->totalTimePlayed();
+        const QString playtime =
+            total > 0 ? QObject::tr("Played %1").arg(Time::prettifyDuration(total, APPLICATION->settings()->get("ShowGameTimeWithoutDays").toBool()))
+                      : QObject::tr("Not played yet");
+        QColor dim = textColor;
+        dim.setAlphaF(0.6f);
+        painter->setPen(dim);
+        QFont small = opt.font;
+        small.setPointSizeF(qMax(7.0, small.pointSizeF() - 1.0));
+        painter->setFont(small);
+        const QRect nameBox = nameRect(card);
+        const QRect playtimeBox(nameBox.left(), nameBox.bottom() + 1, nameBox.width(), kPlaytimeHeight);
+        painter->drawText(playtimeBox, Qt::AlignCenter, painter->fontMetrics().elidedText(playtime, Qt::ElideRight, playtimeBox.width()));
+        painter->setFont(opt.font);
     }
 
     // the selected card shows its actions
@@ -290,7 +317,6 @@ void ListViewDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     }
 
     // FIXME: this really has no business of being here. Make generic.
-    auto instance = (BaseInstance*)index.data(InstanceList::InstancePointerRole).value<void*>();
     if (instance) {
         drawBadges(painter, opt, instance, mode, state);
     }
@@ -298,10 +324,10 @@ void ListViewDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     painter->restore();
 }
 
-QSize ListViewDelegate::sizeHint([[maybe_unused]] const QStyleOptionViewItem& option, [[maybe_unused]] const QModelIndex& index) const
+QSize ListViewDelegate::sizeHint(const QStyleOptionViewItem& option, [[maybe_unused]] const QModelIndex& index) const
 {
-    // every card has the same size, so the cards line up like in the layout mockup
-    return QSize(CardWidth, cardHeight());
+    // an unselected card is small (icon + name), the selected one grows to fit its playtime and actions
+    return QSize(CardWidth, option.state.testFlag(QStyle::State_Selected) ? cardHeight() : kCompactHeight);
 }
 
 class NoReturnTextEdit : public QTextEdit {

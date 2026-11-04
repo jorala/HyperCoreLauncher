@@ -420,7 +420,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     connect(APPLICATION, &Application::globalSettingsApplied, this, &MainWindow::globalSettingsClosed);
 
     m_statusLeft = new QLabel(tr("No instance selected"), this);
-    statusBar()->addPermanentWidget(m_statusLeft, 1);
+    m_statusLeft->hide();  // the instance name already shows on its card
 
     // Use undocumented property... https://stackoverflow.com/questions/7121718/create-a-scrollbar-in-a-submenu-qt
     ui->accountsMenu->setStyleSheet("QMenu { menu-scrollable: 1; }");

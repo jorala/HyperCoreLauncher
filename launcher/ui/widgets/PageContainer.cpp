@@ -163,7 +163,9 @@ void PageContainer::createUI()
 {
     m_pageStack = new QStackedLayout;
     m_pageList = new PageView;
+    m_pageList->setObjectName("pageSidebar");
     m_header = new QLabel();
+    m_header->setObjectName("pageHeader");
 
     QFont headerLabelFont = m_header->font();
     headerLabelFont.setBold(true);
@@ -188,6 +190,7 @@ void PageContainer::createUI()
     m_layout->addLayout(m_pageStack, 1, 1, 1, 1);
     m_layout->setColumnStretch(1, 4);
     m_layout->setContentsMargins(0, 0, 0, 0);
+    m_layout->setHorizontalSpacing(8);
     setLayout(m_layout);
 }
 

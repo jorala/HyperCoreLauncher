@@ -38,6 +38,7 @@
 
 #include <QApplication>
 #include <QDebug>
+#include <QLinearGradient>
 #include <QModelIndex>
 #include <QPainter>
 #include <QtMath>
@@ -52,7 +53,8 @@ VisualGroup::VisualGroup(const VisualGroup* other) : view(other->view), text(oth
 void VisualGroup::update()
 {
     auto temp_items = items();
-    auto itemsPerRow = view->itemsPerRow();
+    // never zero, a narrow window must not divide by zero
+    const int itemsPerRow = qMax(1, view->itemsPerRow());
 
     int numRows = qMax(1, qCeil((qreal)temp_items.size() / (qreal)itemsPerRow));
     rows = QList<VisualRow>(numRows);
@@ -75,6 +77,9 @@ void VisualGroup::update()
         }
         QStyleOptionViewItem viewItemOption;
         view->initViewItemOption(&viewItemOption);
+        if (view->selectionModel() && view->selectionModel()->isSelected(item)) {
+            viewItemOption.state |= QStyle::State_Selected;
+        }
 
         auto itemHeight = view->itemDelegate()->sizeHint(viewItemOption, item).height();
         if (itemHeight > maxRowHeight) {
@@ -141,73 +146,82 @@ VisualGroup::HitResults VisualGroup::hitScan(const QPoint& pos) const
 
 void VisualGroup::drawHeader(QPainter* painter, const QStyleOptionViewItem& option) const
 {
-    QRect optRect = option.rect;
-    optRect.setTop(optRect.top() + 7);
-    QFont font(QApplication::font());
-    font.setBold(true);
-    const QFontMetrics fontMetrics = QFontMetrics(font);
-    painter->setFont(font);
-
-    QPen pen;
-    pen.setWidth(2);
-    QColor penColor = option.palette.text().color();
-    penColor.setAlphaF(0.6f);
-    pen.setColor(penColor);
-    painter->setPen(pen);
+    painter->save();
     painter->setRenderHint(QPainter::Antialiasing);
 
-    // sizes and offsets, to keep things consistent below
-    const int arrowOffsetLeft = fontMetrics.height() / 2 + 7;
-    const int textOffsetLeft = arrowOffsetLeft * 2;
-    const int centerHeight = optRect.top() + fontMetrics.height() / 2;
-    const QString& textToDraw = text.isEmpty() ? QObject::tr("Ungrouped") : text;
+    QFont font(QApplication::font());
+    font.setBold(true);
+    painter->setFont(font);
+    const QFontMetrics fm(font);
 
-    // BEGIN: arrow
-    {
-        constexpr int arrowSize = 6;
-        QPolygon arrowPolygon;
-        if (collapsed) {
-            arrowPolygon << QPoint(arrowOffsetLeft - arrowSize / 2, centerHeight - arrowSize)
-                         << QPoint(arrowOffsetLeft + arrowSize / 2, centerHeight)
-                         << QPoint(arrowOffsetLeft - arrowSize / 2, centerHeight + arrowSize);
-            painter->drawPolyline(arrowPolygon);
-        } else {
-            arrowPolygon << QPoint(arrowOffsetLeft - arrowSize, centerHeight - arrowSize / 2)
-                         << QPoint(arrowOffsetLeft, centerHeight + arrowSize / 2)
-                         << QPoint(arrowOffsetLeft + arrowSize, centerHeight - arrowSize / 2);
-            painter->drawPolyline(arrowPolygon);
-        }
+    const QColor textColor = option.palette.text().color();
+    const bool light = option.palette.base().color().lightness() > 128;
+    const QString name = text.isEmpty() ? QObject::tr("Ungrouped") : text;
+    const QString count = QString::number(items().size());
+
+    // pill with chevron + name + count badge
+    const int pillHeight = fm.height() + 10;
+    const int pillTop = option.rect.top() + 8;
+    const int nameWidth = fm.horizontalAdvance(name);
+    const int badgeWidth = qMax(pillHeight - 8, fm.horizontalAdvance(count) + 12);
+    const int pillWidth = 14 + 10 + 8 + nameWidth + 10 + badgeWidth + 6;
+    const QRect pill(option.rect.left() + 8, pillTop, pillWidth, pillHeight);
+
+    QColor pillColor = textColor;
+    pillColor.setAlphaF(light ? 0.08f : 0.10f);
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(pillColor);
+    painter->drawRoundedRect(pill, pillHeight / 2.0, pillHeight / 2.0);
+
+    // chevron
+    QColor chevronColor = textColor;
+    chevronColor.setAlphaF(0.7f);
+    painter->setPen(QPen(chevronColor, 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter->setBrush(Qt::NoBrush);
+    const QPoint c(pill.left() + 16, pill.center().y());
+    QPolygon chevron;
+    if (collapsed) {
+        chevron << QPoint(c.x() - 2, c.y() - 4) << QPoint(c.x() + 2, c.y()) << QPoint(c.x() - 2, c.y() + 4);
+    } else {
+        chevron << QPoint(c.x() - 4, c.y() - 2) << QPoint(c.x(), c.y() + 2) << QPoint(c.x() + 4, c.y() - 2);
     }
-    // END: arrow
+    painter->drawPolyline(chevron);
 
-    // BEGIN: text
-    {
-        QRect textRect(optRect);
-        textRect.setTop(textRect.top());
-        textRect.setLeft(textOffsetLeft);
-        textRect.setHeight(fontMetrics.height());
-        textRect.setRight(textRect.right() - 7);
+    // name
+    painter->setPen(textColor);
+    const QRect nameRect(pill.left() + 32, pill.top(), nameWidth + 2, pill.height());
+    painter->drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter, name);
 
-        painter->drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, textToDraw);
+    // count badge
+    const QRect badge(nameRect.right() + 10, pill.top() + 4, badgeWidth, pill.height() - 8);
+    QColor badgeColor = textColor;
+    badgeColor.setAlphaF(0.18f);
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(badgeColor);
+    painter->drawRoundedRect(badge, badge.height() / 2.0, badge.height() / 2.0);
+    QFont small(font);
+    small.setPointSizeF(qMax(7.0, font.pointSizeF() - 1.0));
+    painter->setFont(small);
+    painter->setPen(textColor);
+    painter->drawText(badge, Qt::AlignCenter, count);
+
+    // fading line
+    const int lineY = pill.center().y();
+    const int lineStart = pill.right() + 14;
+    const int lineEnd = option.rect.right() - 8;
+    if (lineEnd > lineStart) {
+        QLinearGradient grad(lineStart, 0, lineEnd, 0);
+        QColor from = textColor;
+        from.setAlphaF(0.22f);
+        QColor to = textColor;
+        to.setAlphaF(0.0f);
+        grad.setColorAt(0, from);
+        grad.setColorAt(1, to);
+        painter->setPen(QPen(QBrush(grad), 1));
+        painter->drawLine(lineStart, lineY, lineEnd, lineY);
     }
-    // END: text
 
-    // BEGIN: horizontal line
-    {
-        penColor.setAlphaF(0.05f);
-        pen.setColor(penColor);
-        painter->setPen(pen);
-        // startPoint is left + arrow + text + space
-        const int startPoint =
-            optRect.left() + fontMetrics.height() + fontMetrics.size(Qt::AlignLeft | Qt::AlignVCenter, textToDraw).width() + 20;
-        painter->setRenderHint(QPainter::Antialiasing, false);
-        QPolygon polygon;
-        // for some reason the height (yPos) doesn't look centered, so we are adding 1 to the center height
-        const int lineHeight = centerHeight + 1;
-        polygon << QPoint(startPoint, lineHeight) << QPoint(optRect.right() - 3, lineHeight);
-        painter->drawPolyline(polygon);
-    }
-    // END: horizontal line
+    painter->restore();
 }
 
 int VisualGroup::totalHeight() const
@@ -221,8 +235,7 @@ int VisualGroup::headerHeight()
     font.setBold(true);
     QFontMetrics fontMetrics(font);
 
-    const int height = fontMetrics.height() + 1 /* 1 pixel-width gradient */
-                       + 11 /* top and bottom separation */;
+    const int height = fontMetrics.height() + 10 /* pill padding */ + 8 /* top */ + 8 /* bottom */;
     return height;
     /*
     int raw = view->viewport()->fontMetrics().height() + 4;
