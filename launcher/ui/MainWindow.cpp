@@ -229,7 +229,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         railLayout->setContentsMargins(10, 14, 10, 14);
         railLayout->setSpacing(10);
 
-        auto addRailButton = [this, rail, railLayout](QAction* action, bool hasMenu) {
+        auto addRailButton = [rail, railLayout](QAction* action, bool hasMenu) {
             auto* button = new QToolButton(rail);
             button->setObjectName(QStringLiteral("railButton"));
             button->setDefaultAction(action);

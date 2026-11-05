@@ -69,6 +69,15 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
 
    public:
+    /// Show a dialog inside the main window (instead of as a separate window). \a onDone runs when the dialog finishes.
+    void embedDialog(QDialog* dialog, std::function<void(int)> onDone = {});
+    /// Show an instance window (the instance editor) inside the main window.
+    void embedInstanceWindow(class InstanceWindow* window);
+    /// True while a page other than the instance list is showing.
+    bool hasEmbeddedPage() const;
+    /// Bring the page containing \a child to the front if it is shown inside the main window.
+    void showEmbeddedWidget(QWidget* child);
+
     explicit MainWindow(QWidget* parent = 0);
     ~MainWindow();
 
@@ -237,15 +246,6 @@ class MainWindow : public QMainWindow {
     void instanceFromInstanceTask(InstanceTask* task);
 
     void handleInstanceRename(const QString& before, const QString& after);
-
-    /// Show a dialog inside the main window (instead of as a separate window). \a onDone runs when the dialog finishes.
-    void embedDialog(QDialog* dialog, std::function<void(int)> onDone = {});
-    /// Show an instance window (the instance editor) inside the main window.
-    void embedInstanceWindow(class InstanceWindow* window);
-    /// True while a page other than the instance list is showing.
-    bool hasEmbeddedPage() const;
-    /// Bring the page containing \a child to the front if it is shown inside the main window.
-    void showEmbeddedWidget(QWidget* child);
 
    private:
     Ui::MainWindow* ui;
