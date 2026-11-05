@@ -42,6 +42,7 @@
 
 #include <QMainWindow>
 #include <functional>
+#include <QIcon>
 #include <QProcess>
 #include <QTimer>
 
@@ -72,7 +73,7 @@ class MainWindow : public QMainWindow {
     /// Show a dialog inside the main window (instead of as a separate window). \a onDone runs when the dialog finishes.
     void embedDialog(QDialog* dialog, std::function<void(int)> onDone = {});
     /// Show an instance window (the instance editor) inside the main window.
-    void embedInstanceWindow(class InstanceWindow* window);
+    void embedInstanceWindow(class InstanceWindow* window, const QIcon& icon);
     /// True while a page other than the instance list is showing.
     bool hasEmbeddedPage() const;
     /// Bring the page containing \a child to the front if it is shown inside the main window.
@@ -265,6 +266,9 @@ class MainWindow : public QMainWindow {
     QToolButton* helpMenuButton = nullptr;
     QToolButton* m_foldersButton = nullptr;
     QToolButton* m_accountsButton = nullptr;
+    QToolButton* m_addButton = nullptr;
+    class QVBoxLayout* m_railLayout = nullptr;
+    class QFrame* m_rail = nullptr;
     class QStackedWidget* m_pageStack = nullptr;
     KonamiCode* secretEventFilter = nullptr;
 

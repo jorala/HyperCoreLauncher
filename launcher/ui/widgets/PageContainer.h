@@ -52,6 +52,7 @@ class QListView;
 class QLineEdit;
 class QStackedLayout;
 class QGridLayout;
+class QHBoxLayout;
 
 class PageContainer : public QWidget, public BasePageContainer {
     Q_OBJECT
@@ -115,5 +116,6 @@ class PageContainer : public QWidget, public BasePageContainer {
     QStackedLayout* m_pageStack;
     QListView* m_pageList;
     QLabel* m_header;
+    QHBoxLayout* m_headerLayout = nullptr;
     QGridLayout* m_layout;
 };

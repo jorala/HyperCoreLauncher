@@ -71,6 +71,7 @@
 #include <QTextEdit>
 #include <QToolBar>
 #include <QDialog>
+#include <QStyle>
 #include <QFrame>
 #include <QStackedWidget>
 #include <QVBoxLayout>
@@ -249,26 +250,34 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         m_accountsButton = addRailButton(ui->actionAccountsButton, true);
         m_foldersButton = addRailButton(ui->actionFoldersButton, true);
         helpMenuButton = addRailButton(ui->actionHelpButton, true);
-        addRailButton(ui->actionAddInstance, false);
+        m_addButton = addRailButton(ui->actionAddInstance, false);
         railLayout->addStretch(1);
         addRailButton(ui->actionCheckUpdate, false);
-        addRailButton(ui->actionCAT, false);
         addRailButton(ui->actionSettings, false);
+        m_rail = rail;
+        m_railLayout = railLayout;
 
         // the old toolbars are replaced by the rail
         ui->mainToolBar->hide();
         ui->newsToolBar->hide();
         ui->instanceToolBar->hide();
 
-        auto* headerLayout = new QHBoxLayout;
-        headerLayout->setContentsMargins(18, 4, 18, 0);
-        headerLayout->addStretch(1);
+        // the banner on top: logo, title and the total playtime
+        auto* banner = new QFrame(this);
+        banner->setObjectName(QStringLiteral("headerBanner"));
+        banner->setFixedHeight(58);
+        auto* headerLayout = new QHBoxLayout(banner);
+        headerLayout->setContentsMargins(20, 4, 14, 4);
         headerLayout->addWidget(m_statusCenter);
-        headerLayout->addSpacing(22);
+        headerLayout->addStretch(1);
         headerLayout->addWidget(titleLabel);
+        headerLayout->addSpacing(8);
         headerLayout->addWidget(logoLabel);
 
         m_pageStack = new QStackedWidget(this);
+        // pages must never dictate the minimum size of the window, so it stays resizable in both directions
+        m_pageStack->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+        setMinimumSize(760, 480);
         m_pageStack->addWidget(takeCentralWidget());
 
         auto* bodyLayout = new QHBoxLayout;
@@ -277,9 +286,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         bodyLayout->addWidget(m_pageStack, 1);
 
         auto* rootLayout = new QVBoxLayout;
-        rootLayout->setContentsMargins(14, 6, 14, 14);
+        rootLayout->setContentsMargins(14, 10, 14, 14);
         rootLayout->setSpacing(8);
-        rootLayout->addLayout(headerLayout);
+        rootLayout->addWidget(banner);
         rootLayout->addLayout(bodyLayout, 1);
 
         auto* root = new QWidget(this);
@@ -1954,10 +1963,23 @@ static QFrame* makeEmbeddedPanel(QWidget* content, QStackedWidget* stack)
     auto* panel = new QFrame(stack);
     panel->setObjectName(QStringLiteral("embeddedPanel"));
     auto* layout = new QVBoxLayout(panel);
-    layout->setContentsMargins(18, 14, 18, 14);
+    layout->setContentsMargins(22, 16, 22, 16);
+    layout->setSpacing(6);
+
+    // the title of the page, big, with an accent line under it
+    auto* title = new QLabel(content->windowTitle(), panel);
+    title->setObjectName(QStringLiteral("panelTitle"));
+    QObject::connect(content, &QWidget::windowTitleChanged, title, &QLabel::setText);
+    auto* line = new QFrame(panel);
+    line->setObjectName(QStringLiteral("panelTitleLine"));
+    line->setFixedHeight(3);
+    layout->addWidget(title);
+    layout->addWidget(line);
+
     content->setParent(panel, Qt::Widget);
     content->setObjectName(QStringLiteral("embeddedPage"));
-    layout->addWidget(content);
+    content->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+    layout->addWidget(content, 1);
     return panel;
 }
 
@@ -1980,19 +2002,41 @@ void MainWindow::embedDialog(QDialog* dialog, std::function<void(int)> onDone)
     dialog->show();
 }
 
-void MainWindow::embedInstanceWindow(InstanceWindow* window)
+void MainWindow::embedInstanceWindow(InstanceWindow* window, const QIcon& icon)
 {
     auto* panel = makeEmbeddedPanel(window, m_pageStack);
     m_pageStack->addWidget(panel);
 
-    connect(window, &InstanceWindow::isClosing, this, [this, panel] {
+    // the instance shows up in the rail while its editor is open; clicking it switches between editor and home
+    auto* button = new QToolButton(m_rail);
+    button->setObjectName(QStringLiteral("railButton"));
+    button->setIcon(icon);
+    button->setIconSize(QSize(36, 36));
+    button->setFixedSize(52, 52);
+    button->setFocusPolicy(Qt::NoFocus);
+    button->setToolTip(window->windowTitle());
+    connect(window, &QWidget::windowTitleChanged, button, &QToolButton::setToolTip);
+    m_railLayout->insertWidget(m_railLayout->indexOf(m_addButton) + 1, button);
+    auto refresh = [this, button, panel] {
+        button->setProperty("active", m_pageStack->currentWidget() == panel);
+        button->style()->unpolish(button);
+        button->style()->polish(button);
+    };
+    connect(m_pageStack, &QStackedWidget::currentChanged, button, refresh);
+    connect(button, &QToolButton::clicked, this, [this, panel] {
+        m_pageStack->setCurrentIndex(m_pageStack->currentWidget() == panel ? 0 : m_pageStack->indexOf(panel));
+    });
+
+    connect(window, &InstanceWindow::isClosing, this, [this, panel, button] {
         m_pageStack->setCurrentIndex(0);
         m_pageStack->removeWidget(panel);
         panel->deleteLater();
+        button->deleteLater();
     });
 
     m_pageStack->setCurrentWidget(panel);
     window->show();
+    refresh();
 }
 
 void MainWindow::showEmbeddedWidget(QWidget* child)

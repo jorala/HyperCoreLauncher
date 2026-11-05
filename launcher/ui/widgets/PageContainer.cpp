@@ -192,7 +192,10 @@ void PageContainer::createUI()
     const int leftMargin = APPLICATION->style()->pixelMetric(QStyle::PM_LayoutLeftMargin);
     headerHLayout->addSpacerItem(new QSpacerItem(leftMargin, 0, QSizePolicy::Fixed, QSizePolicy::Ignored));
     headerHLayout->addWidget(m_header);
+    headerHLayout->addStretch(1);
     headerHLayout->setContentsMargins(0, 6, 0, 0);
+    headerHLayout->setSpacing(8);
+    m_headerLayout = headerHLayout;
 
     m_pageStack->setContentsMargins(0, 0, 0, 0);
     m_pageStack->addWidget(new QWidget(this));
@@ -220,14 +223,15 @@ void PageContainer::retranslate()
     }
 }
 
+// the OK / Cancel / Close buttons sit at the top right of the page instead of the bottom
 void PageContainer::addButtons(QWidget* buttons)
 {
-    m_layout->addWidget(buttons, 3, 0, 1, 1);
+    m_headerLayout->addWidget(buttons);
 }
 
 void PageContainer::addButtons(QLayout* buttons)
 {
-    m_layout->addLayout(buttons, 3, 0, 1, 1);
+    m_headerLayout->addLayout(buttons);
 }
 
 void PageContainer::useSidebarStyle(bool sidebar)
