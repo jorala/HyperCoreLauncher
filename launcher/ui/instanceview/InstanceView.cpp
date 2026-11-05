@@ -46,6 +46,7 @@
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPersistentModelIndex>
 #include <QScrollBar>
 #include <QtMath>
@@ -66,6 +67,7 @@ InstanceView::InstanceView(QWidget* parent) : QAbstractItemView(parent)
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setMouseTracking(true);
+    viewport()->setAutoFillBackground(false);
     setAcceptDrops(true);
     setAutoScroll(true);
     setPaintCat(APPLICATION->settings()->get("TheCat").toBool());
@@ -533,6 +535,15 @@ void InstanceView::paintEvent(QPaintEvent* event)
 
     QPainter painter(this->viewport());
 
+    // the rounded panel behind everything; the content is clipped to it
+    {
+        painter.setRenderHint(QPainter::Antialiasing);
+        QPainterPath panel;
+        panel.addRoundedRect(QRectF(viewport()->rect()), 32, 32);
+        painter.fillPath(panel, palette().color(QPalette::Base));
+        painter.setClipPath(panel);
+    }
+
     if (m_cat) {
         m_cat->paint(&painter, this->viewport()->rect());
     }
@@ -817,8 +828,8 @@ QRect InstanceView::geometryRect(const QModelIndex& index) const
     }
 
     QRect out;
-    out.setTop(cat->verticalPosition() + cat->headerHeight() + 5 + cat->rowTopOf(index));
-    out.setLeft(cat->m_horizontalPosition + m_spacing + x * (itemWidth() + m_spacing));
+    out.setTop(cat->verticalPosition() + cat->headerHeight() + VisualGroup::ContainerPadding + cat->rowTopOf(index));
+    out.setLeft(cat->m_horizontalPosition + VisualGroup::ContainerPadding + x * (itemWidth() + m_spacing));
     out.setSize(itemDelegate()->sizeHint(option, index));
     m_geometryCache.insert(row, new QRect(out));
     return out;
@@ -1068,10 +1079,10 @@ int InstanceView::verticalOffset() const
     return verticalScrollBar()->value();
 }
 
-void InstanceView::scrollContentsBy(int dx, int dy)
+void InstanceView::scrollContentsBy([[maybe_unused]] int dx, [[maybe_unused]] int dy)
 {
-    scrollDirtyRegion(dx, dy);
-    viewport()->scroll(dx, dy);
+    // repaint instead of scrolling pixels: the rounded corners of the panel must not move
+    viewport()->update();
 }
 
 void InstanceView::scrollTo(const QModelIndex& index, ScrollHint hint)

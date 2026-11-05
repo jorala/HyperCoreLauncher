@@ -57,6 +57,9 @@ struct VisualGroup {
     VisualGroup(QString text, InstanceView* view);
     explicit VisualGroup(const VisualGroup* other);
 
+    /// padding between the edge of a group's container and its cards
+    static constexpr int ContainerPadding = 14;
+
     /* data */
     InstanceView* view = nullptr;
     QString text;
@@ -82,6 +85,9 @@ struct VisualGroup {
 
     /// height of the group content, in pixels
     int contentHeight() const;
+
+    /// height of the rounded container that holds the cards (0 when collapsed)
+    int containerHeight() const;
 
     /// the number of visual rows this group has
     int numRows() const;

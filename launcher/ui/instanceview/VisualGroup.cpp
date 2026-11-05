@@ -124,7 +124,7 @@ VisualGroup::HitResults VisualGroup::hitScan(const QPoint& pos) const
     VisualGroup::HitResults results = VisualGroup::NoHit;
     int y_start = verticalPosition();
     int body_start = y_start + headerHeight();
-    int body_end = body_start + contentHeight();
+    int body_end = body_start + containerHeight();
     int y = pos.y();
     const int x = pos.x();
     if (x < m_horizontalPosition || x >= m_horizontalPosition + view->columnWidth()) {
@@ -153,36 +153,25 @@ void VisualGroup::drawHeader(QPainter* painter, const QStyleOptionViewItem& opti
 
     QFont font(QApplication::font());
     font.setBold(true);
+    font.setPointSizeF(font.pointSizeF() + 1.0);
     painter->setFont(font);
     const QFontMetrics fm(font);
 
+    const QColor base = option.palette.base().color();
     const QColor textColor = option.palette.text().color();
-    const bool light = option.palette.base().color().lightness() > 128;
-    const QString count = QString::number(items().size());
-    const int badgeMin = fm.height() + 2;
-    const int maxName = qMax(20, option.rect.width() - 32 - 10 - badgeMin - 12);
-    const QString name = fm.elidedText(text.isEmpty() ? QObject::tr("Ungrouped") : text, Qt::ElideRight, maxName);
+    const bool light = base.lightness() > 128;
 
-    // pill with chevron + name + count badge
-    const int pillHeight = fm.height() + 10;
-    const int pillTop = option.rect.top() + 8;
-    const int nameWidth = fm.horizontalAdvance(name);
-    const int badgeWidth = qMax(pillHeight - 8, fm.horizontalAdvance(count) + 12);
-    const int pillWidth = 14 + 10 + 8 + nameWidth + 10 + badgeWidth + 6;
-    const QRect pill(option.rect.left() + 8, pillTop, pillWidth, pillHeight);
-
-    QColor pillColor = textColor;
-    pillColor.setAlphaF(light ? 0.08f : 0.10f);
+    // the group label: a rounded bar as wide as the column
+    const QRect label(option.rect.left(), option.rect.top(), option.rect.width(), fm.height() + 14);
     painter->setPen(Qt::NoPen);
-    painter->setBrush(pillColor);
-    painter->drawRoundedRect(pill, pillHeight / 2.0, pillHeight / 2.0);
+    painter->setBrush(light ? base.darker(112) : base.lighter(155));
+    painter->drawRoundedRect(label, 14, 14);
 
-    // chevron
+    // collapse chevron on the left
     QColor chevronColor = textColor;
-    chevronColor.setAlphaF(0.7f);
+    chevronColor.setAlphaF(0.65f);
     painter->setPen(QPen(chevronColor, 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    painter->setBrush(Qt::NoBrush);
-    const QPoint c(pill.left() + 16, pill.center().y());
+    const QPoint c(label.left() + 20, label.center().y());
     QPolygon chevron;
     if (collapsed) {
         chevron << QPoint(c.x() - 2, c.y() - 4) << QPoint(c.x() + 2, c.y()) << QPoint(c.x() - 2, c.y() + 4);
@@ -191,38 +180,23 @@ void VisualGroup::drawHeader(QPainter* painter, const QStyleOptionViewItem& opti
     }
     painter->drawPolyline(chevron);
 
-    // name
-    painter->setPen(textColor);
-    const QRect nameRect(pill.left() + 32, pill.top(), nameWidth + 2, pill.height());
-    painter->drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter, name);
+    // instance count on the right
+    const QString count = QString::number(items().size());
+    painter->setPen(chevronColor);
+    const QRect countRect(label.right() - 36, label.top(), 28, label.height());
+    painter->drawText(countRect, Qt::AlignRight | Qt::AlignVCenter, count);
 
-    // count badge
-    const QRect badge(nameRect.right() + 10, pill.top() + 4, badgeWidth, pill.height() - 8);
-    QColor badgeColor = textColor;
-    badgeColor.setAlphaF(0.18f);
-    painter->setPen(Qt::NoPen);
-    painter->setBrush(badgeColor);
-    painter->drawRoundedRect(badge, badge.height() / 2.0, badge.height() / 2.0);
-    QFont small(font);
-    small.setPointSizeF(qMax(7.0, font.pointSizeF() - 1.0));
-    painter->setFont(small);
+    // the name, centered
     painter->setPen(textColor);
-    painter->drawText(badge, Qt::AlignCenter, count);
+    const QRect nameRect = label.adjusted(40, 0, -40, 0);
+    painter->drawText(nameRect, Qt::AlignCenter, fm.elidedText(text.isEmpty() ? QObject::tr("Ungrouped") : text, Qt::ElideRight, nameRect.width()));
 
-    // fading line
-    const int lineY = pill.center().y();
-    const int lineStart = pill.right() + 14;
-    const int lineEnd = option.rect.right() - 8;
-    if (lineEnd > lineStart) {
-        QLinearGradient grad(lineStart, 0, lineEnd, 0);
-        QColor from = textColor;
-        from.setAlphaF(0.22f);
-        QColor to = textColor;
-        to.setAlphaF(0.0f);
-        grad.setColorAt(0, from);
-        grad.setColorAt(1, to);
-        painter->setPen(QPen(QBrush(grad), 1));
-        painter->drawLine(lineStart, lineY, lineEnd, lineY);
+    // the container that holds the group's cards
+    if (!collapsed) {
+        const QRect container(option.rect.left(), label.bottom() + 12, option.rect.width(), containerHeight());
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(light ? base.darker(104) : base.darker(128));
+        painter->drawRoundedRect(container, 28, 28);
     }
 
     painter->restore();
@@ -230,7 +204,12 @@ void VisualGroup::drawHeader(QPainter* painter, const QStyleOptionViewItem& opti
 
 int VisualGroup::totalHeight() const
 {
-    return headerHeight() + contentHeight();
+    return headerHeight() + containerHeight();
+}
+
+int VisualGroup::containerHeight() const
+{
+    return collapsed ? 0 : contentHeight() + 2 * ContainerPadding;
 }
 
 int VisualGroup::headerHeight()
@@ -239,7 +218,7 @@ int VisualGroup::headerHeight()
     font.setBold(true);
     QFontMetrics fontMetrics(font);
 
-    const int height = fontMetrics.height() + 10 /* pill padding */ + 8 /* top */ + 8 /* bottom */;
+    const int height = fontMetrics.height() + 14 /* label */ + 12 /* gap to the container */;
     return height;
     /*
     int raw = view->viewport()->fontMetrics().height() + 4;

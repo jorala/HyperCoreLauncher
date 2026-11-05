@@ -1701,6 +1701,18 @@ void Application::ShowGlobalSettings(class QWidget* parent, QString openPage)
         return;
     }
     emit globalSettingsAboutToOpen();
+
+    // opened from the main window: show the settings inside it instead of as a separate window
+    if (m_mainWindow && parent == m_mainWindow) {
+        if (m_mainWindow->hasEmbeddedPage()) {
+            return;
+        }
+        auto lock = std::make_shared<SettingsObject::Lock>(APPLICATION->settings());
+        auto* dlg = new PageDialog(m_globalSettingsProvider.get(), std::move(openPage), m_mainWindow);
+        connect(dlg, &PageDialog::applied, this, &Application::globalSettingsApplied);
+        m_mainWindow->embedDialog(dlg, [lock](int) mutable { lock.reset(); });
+        return;
+    }
     {
         SettingsObject::Lock lock(APPLICATION->settings());
         PageDialog dlg(m_globalSettingsProvider.get(), std::move(openPage), parent);
@@ -1717,7 +1729,7 @@ MainWindow* Application::showMainWindow(bool minimized)
         m_mainWindow->activateWindow();
     } else {
         m_mainWindow = new MainWindow();
-        m_mainWindow->restoreState(QByteArray::fromBase64(APPLICATION->settings()->get("MainWindowState").toString().toUtf8()));
+        // the toolbar layout is fixed in HyperCore, a stale saved state must not move things around
         m_mainWindow->restoreGeometry(QByteArray::fromBase64(APPLICATION->settings()->get("MainWindowGeometry").toString().toUtf8()));
 
         if (minimized) {
@@ -1772,10 +1784,17 @@ InstanceWindow* Application::showInstanceWindow(MinecraftInstance* instance, con
 
         window->raise();
         window->activateWindow();
+        if (m_mainWindow) {
+            m_mainWindow->showEmbeddedWidget(window);
+        }
     } else {
         window = new InstanceWindow(instance);
         m_openWindows++;
         connect(window, &InstanceWindow::isClosing, this, &Application::on_windowClose);
+        // the editor lives inside the main window, only the console of a launching instance gets its own window
+        if (m_mainWindow && page != "console") {
+            m_mainWindow->embedInstanceWindow(window);
+        }
     }
 
     if (!page.isEmpty()) {

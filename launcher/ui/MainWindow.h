@@ -41,6 +41,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include <functional>
 #include <QProcess>
 #include <QTimer>
 
@@ -49,6 +50,7 @@
 class EditableLabel;
 class LaunchController;
 class NewsChecker;
+class QDialog;
 class QLabel;
 class QTextEdit;
 class QToolButton;
@@ -236,6 +238,15 @@ class MainWindow : public QMainWindow {
 
     void handleInstanceRename(const QString& before, const QString& after);
 
+    /// Show a dialog inside the main window (instead of as a separate window). \a onDone runs when the dialog finishes.
+    void embedDialog(QDialog* dialog, std::function<void(int)> onDone = {});
+    /// Show an instance window (the instance editor) inside the main window.
+    void embedInstanceWindow(class InstanceWindow* window);
+    /// True while a page other than the instance list is showing.
+    bool hasEmbeddedPage() const;
+    /// Bring the page containing \a child to the front if it is shown inside the main window.
+    void showEmbeddedWidget(QWidget* child);
+
    private:
     Ui::MainWindow* ui;
     // these are managed by Qt's memory management model!
@@ -252,6 +263,9 @@ class MainWindow : public QMainWindow {
     QAction* m_instanceInfoWidget = nullptr;
     EditableLabel* m_nameLabel = nullptr;
     QToolButton* helpMenuButton = nullptr;
+    QToolButton* m_foldersButton = nullptr;
+    QToolButton* m_accountsButton = nullptr;
+    class QStackedWidget* m_pageStack = nullptr;
     KonamiCode* secretEventFilter = nullptr;
 
     unique_qobject_ptr<NewsChecker> m_newsChecker;

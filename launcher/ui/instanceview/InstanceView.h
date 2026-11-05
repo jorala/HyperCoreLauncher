@@ -123,12 +123,12 @@ class InstanceView : public QAbstractItemView {
     visibilityFunction m_fVisibility;
 
     // geometry
-    int m_leftMargin = 5;
+    int m_leftMargin = 22;
     int m_rightMargin = 5;
     int m_bottomMargin = 5;
-    int m_categoryMargin = 5;
+    int m_categoryMargin = 20;
     int m_spacing = 5;
-    int m_columnGap = 14;
+    int m_columnGap = 18;
     QPoint m_hoverPos = QPoint(-1, -1);
     int m_itemWidth = 100;
     int m_currentItemsPerRow = -1;
@@ -152,7 +152,7 @@ class InstanceView : public QAbstractItemView {
 
    public:
     /// width of one group column (groups are laid out side by side, cards stack vertically)
-    int columnWidth() const { return m_itemWidth + 2 * m_spacing; }
+    int columnWidth() const { return m_itemWidth + 2 * VisualGroup::ContainerPadding; }
 
    private:
     int contentWidth() const;

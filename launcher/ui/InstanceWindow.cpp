@@ -221,8 +221,11 @@ void InstanceWindow::closeEvent(QCloseEvent* event)
         return;
     }
 
-    APPLICATION->settings()->set("ConsoleWindowState", QString::fromUtf8(saveState().toBase64()));
-    APPLICATION->settings()->set("ConsoleWindowGeometry", QString::fromUtf8(saveGeometry().toBase64()));
+    // an editor embedded in the main window has no window geometry of its own to remember
+    if (isWindow()) {
+        APPLICATION->settings()->set("ConsoleWindowState", QString::fromUtf8(saveState().toBase64()));
+        APPLICATION->settings()->set("ConsoleWindowGeometry", QString::fromUtf8(saveGeometry().toBase64()));
+    }
     emit isClosing();
     event->accept();
 }

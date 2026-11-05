@@ -118,7 +118,7 @@ PageContainer::PageContainer(BasePageProvider* pageProvider, QString defaultId, 
     m_pageList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     {
         const int rows = qBound(1, static_cast<int>((pages.size() + 4) / 5), 3);
-        m_pageList->setFixedHeight(rows * 46 + 12);
+        m_pageList->setFixedHeight(rows * 54 + 16);
     }
     connect(m_pageList->selectionModel(), &QItemSelectionModel::currentRowChanged, this, &PageContainer::currentChanged);
     m_pageStack->setStackingMode(QStackedLayout::StackOne);
