@@ -87,6 +87,7 @@ InstanceWindow::InstanceWindow(MinecraftInstance* instance, QWidget* parent) : Q
         horizontalLayout->addSpacerItem(spacer);
 
         m_launchButton = new QToolButton(this);
+        m_launchButton->setObjectName("launchButton");
         m_launchButton->setText(tr("&Launch"));
         m_launchButton->setToolTip(tr("Launch the instance"));
         m_launchButton->setPopupMode(QToolButton::MenuButtonPopup);
@@ -103,6 +104,7 @@ InstanceWindow::InstanceWindow(MinecraftInstance* instance, QWidget* parent) : Q
         m_restartButton->hide();
 
         m_killButton = new QPushButton(this);
+        m_killButton->setObjectName("killButton");
         m_killButton->setText(tr("&Kill"));
         m_killButton->setToolTip(tr("Kill the running instance"));
         m_killButton->setShortcut(QKeySequence(tr("Ctrl+K")));

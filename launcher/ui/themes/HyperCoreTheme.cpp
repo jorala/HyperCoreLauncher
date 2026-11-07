@@ -96,22 +96,46 @@ QString HyperCoreTheme::appStyleSheet()
         "InstanceView { background: transparent; border: none; }"
 
         // the rail
-        "#railFrame { background: @RAIL@; border-radius: 30px; }"
-        "#railButton { background: transparent; border: none; border-radius: 18px; }"
+        "#railFrame { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3a2a21, stop:1 #241812); border-radius: 32px; }"
+        "#railScroll, #railScroll > QWidget, #railInstances { background: transparent; border: none; }"
+        "#railDivider { background: rgba(224,165,107,70); border: none; border-radius: 1px; margin: 0 8px; }"
+        "#railButton { background: transparent; border: 2px solid transparent; border-radius: 18px; }"
         "#railButton:hover { background: @HOVER@; }"
         "#railButton:pressed { background: @SELECTED@; }"
         "#railButton::menu-indicator { image: none; width: 0px; }"
 
         // top right: playtime, title
-        "#titleLabel { font-size: 20px; font-weight: 600; color: #f6ece3; }"
+        "#titleLabel { font-size: 24px; font-weight: 800; color: #fff3e8; }"
         "#playtimeLabel { font-size: 13px; color: #f0d9c4; background: rgba(0,0,0,70); border-radius: 12px; padding: 5px 14px; }"
-        "#headerBanner { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2f2019, stop:0.55 #5b3b29, stop:1 #8a5a36); border-radius: 20px; }"
+        "#headerBanner { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2a1b14, stop:0.5 #5f3c27, stop:1 #b87a43); border-radius: 22px; border-bottom: 3px solid #f0b97a; }"
         "#panelTitle { font-size: 24px; font-weight: 700; color: #f6ece3; padding: 2px 2px 0 2px; }"
         "#panelTitleLine { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #e0a56b, stop:1 transparent); border: none; border-radius: 1px; }"
-        "#railButton[active=\"true\"] { background: @HOVER@; border: 2px solid @ACCENT@; }"
+        "#railButton[active=\"true\"] { background: rgba(224,165,107,60); border: 2px solid @ACCENT@; }"
 
         // pages that open inside the window (settings, instance editor, new instance)
-        "#embeddedPanel { background: @CONTENT@; border-radius: 30px; }"
+        "#embeddedPanel, #homePanel { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3b2a21, stop:1 #2a1d16); border-radius: 32px; }"
+        "#welcomeLabel { font-size: 16px; color: #cdb6a4; }"
+        "#panelSubtitle { font-size: 13px; color: #cdb6a4; padding-left: 2px; }"
+
+        // the instance's actions
+        "#actionChip, #dangerChip { background: rgba(255,255,255,18); border: none; border-radius: 14px; padding: 8px 14px; color: #f3e6da; }"
+        "#actionChip:hover { background: rgba(224,165,107,70); }"
+        "#actionChip:pressed { background: rgba(224,165,107,110); }"
+        "#actionChip:disabled, #dangerChip:disabled { color: #7d6a5e; background: rgba(255,255,255,8); }"
+        "#actionChip::menu-indicator { image: none; width: 0; }"
+        "#dangerChip { color: #ff9a8a; }"
+        "#dangerChip:hover { background: rgba(255,90,70,90); color: #ffffff; }"
+
+        // launch / kill / close on the instance page
+        "QToolButton#launchButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #f0b97a, stop:1 #d9894a); color: #2a170c;"
+        "  border: none; border-radius: 14px; padding: 9px 40px 9px 22px; font-weight: 700; min-width: 70px; }"
+        "QToolButton#launchButton:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ffd09a, stop:1 #eb9a58); }"
+        "QToolButton#launchButton:disabled { background: #4a382d; color: #8d7868; }"
+        "QToolButton#launchButton::menu-button { border: none; border-left: 1px solid rgba(42,23,12,70); width: 28px;"
+        "  border-top-right-radius: 14px; border-bottom-right-radius: 14px; }"
+        "QPushButton#killButton { background: rgba(255,90,70,60); color: #ffb3a6; }"
+        "QPushButton#killButton:hover { background: rgba(255,90,70,130); color: #ffffff; }"
+        "QPushButton#killButton:disabled { background: @FIELD@; color: #7d6a5e; }"
         "#embeddedPage { background: transparent; }"
 
         // menus

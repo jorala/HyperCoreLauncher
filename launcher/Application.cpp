@@ -1793,7 +1793,7 @@ InstanceWindow* Application::showInstanceWindow(MinecraftInstance* instance, con
         connect(window, &InstanceWindow::isClosing, this, &Application::on_windowClose);
         // the editor lives inside the main window, only the console of a launching instance gets its own window
         if (m_mainWindow && page != "console") {
-            m_mainWindow->embedInstanceWindow(window, icons()->getIcon(instance->iconKey()));
+            m_mainWindow->embedInstanceWindow(window, instance->id());
         }
     }
 
