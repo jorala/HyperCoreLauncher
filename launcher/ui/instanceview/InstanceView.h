@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 /*
- *  Prism Launcher - Minecraft Launcher
+ *  HyperCore Launcher - Minecraft Launcher
  *  Copyright (C) 2022 Sefa Eyeoglu <contact@scrumplex.net>
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -90,6 +90,7 @@ class InstanceView : public QAbstractItemView {
     void modelReset();
     void rowsRemoved();
     void currentChanged(const QModelIndex& current, const QModelIndex& previous) override;
+    void selectionChanged(const QItemSelection& selected, const QItemSelection& deselected) override;
 
    signals:
     void droppedURLs(QList<QUrl> urls);
@@ -99,6 +100,8 @@ class InstanceView : public QAbstractItemView {
     bool isIndexHidden(const QModelIndex& index) const override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
+    void leaveEvent(QEvent* event) override;
+    void wheelEvent(QWheelEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void mouseDoubleClickEvent(QMouseEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
@@ -120,11 +123,13 @@ class InstanceView : public QAbstractItemView {
     visibilityFunction m_fVisibility;
 
     // geometry
-    int m_leftMargin = 5;
+    int m_leftMargin = 22;
     int m_rightMargin = 5;
     int m_bottomMargin = 5;
-    int m_categoryMargin = 5;
+    int m_categoryMargin = 20;
     int m_spacing = 5;
+    int m_columnGap = 18;
+    QPoint m_hoverPos = QPoint(-1, -1);
     int m_itemWidth = 100;
     int m_currentItemsPerRow = -1;
     int m_currentCursorColumn = -1;
@@ -144,6 +149,12 @@ class InstanceView : public QAbstractItemView {
     VisualGroup* categoryAt(const QPoint& pos, VisualGroup::HitResults& result) const;
 
     int itemsPerRow() const { return m_currentItemsPerRow; };
+
+   public:
+    /// width of one group column (groups are laid out side by side, cards stack vertically)
+    int columnWidth() const { return m_itemWidth + 2 * VisualGroup::ContainerPadding; }
+
+   private:
     int contentWidth() const;
 
    private: /* methods */

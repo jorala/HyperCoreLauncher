@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 /*
- *  Prism Launcher - Minecraft Launcher
+ *  HyperCore Launcher - Minecraft Launcher
  *  Copyright (C) 2022 Sefa Eyeoglu <contact@scrumplex.net>
  *  Copyright (C) 2023 TheKodeToad <TheKodeToad@proton.me>
  *
@@ -70,6 +70,14 @@
 #include <QStatusBar>
 #include <QTextEdit>
 #include <QToolBar>
+#include <QDialog>
+#include <QStyle>
+#include <QFrame>
+#include <QScrollArea>
+#include <QStackedWidget>
+#include <QTimer>
+#include <QVBoxLayout>
+#include "ui/InstanceWindow.h"
 #include <QToolButton>
 #include <QWidget>
 #include <QWidgetAction>
@@ -206,20 +214,139 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         m_instanceToolBarTopSeparator = ui->instanceToolBar->insertSeparator(ui->actionLaunchInstance);
     }
 
+    // HyperCore layout: a rounded rail on the left, the title on top and every page inside this one window
+    {
+        m_versionLabel = new QLabel(tr("Minecraft Version"), this);
+        m_versionLabel->hide();
+        m_statusCenter = new QLabel(tr("Total playtime: 0s"), this);
+        m_statusCenter->setObjectName(QStringLiteral("playtimeLabel"));
+
+        auto* titleLabel = new QLabel(QStringLiteral("Hyper<span style=\"color:#f0b97a;\">Core</span> Launcher"), this);
+        titleLabel->setObjectName(QStringLiteral("titleLabel"));
+        titleLabel->setTextFormat(Qt::RichText);
+        auto* logoLabel = new QLabel(this);
+        logoLabel->setPixmap(Application::logo().pixmap(38, 38));
+
+        auto* rail = new QFrame(this);
+        rail->setObjectName(QStringLiteral("railFrame"));
+        auto* railLayout = new QVBoxLayout(rail);
+        railLayout->setContentsMargins(10, 14, 10, 14);
+        railLayout->setSpacing(10);
+
+        auto addRailButton = [rail, railLayout](QAction* action, bool hasMenu) {
+            auto* button = new QToolButton(rail);
+            button->setObjectName(QStringLiteral("railButton"));
+            button->setDefaultAction(action);
+            button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+            button->setIconSize(QSize(26, 26));
+            button->setFixedSize(52, 52);
+            button->setFocusPolicy(Qt::NoFocus);
+            if (hasMenu) {
+                button->setPopupMode(QToolButton::InstantPopup);
+            }
+            // plain tool buttons do not follow the visibility of their action
+            button->setVisible(action->isVisible());
+            connect(action, &QAction::changed, button, [button, action] { button->setVisible(action->isVisible()); });
+            railLayout->addWidget(button);
+            return button;
+        };
+        m_accountsButton = addRailButton(ui->actionAccountsButton, true);
+        m_foldersButton = addRailButton(ui->actionFoldersButton, true);
+        helpMenuButton = addRailButton(ui->actionHelpButton, true);
+        m_addButton = addRailButton(ui->actionAddInstance, false);
+
+        // every instance is an icon in the rail, there are no cards any more
+        auto* divider = new QFrame(rail);
+        divider->setObjectName(QStringLiteral("railDivider"));
+        divider->setFixedHeight(2);
+        railLayout->addWidget(divider);
+        auto* instanceScroll = new QScrollArea(rail);
+        instanceScroll->setObjectName(QStringLiteral("railScroll"));
+        instanceScroll->setFrameShape(QFrame::NoFrame);
+        instanceScroll->setWidgetResizable(true);
+        instanceScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        instanceScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        instanceScroll->viewport()->setAutoFillBackground(false);
+        m_instanceList = new QWidget;
+        m_instanceList->setObjectName(QStringLiteral("railInstances"));
+        m_instanceList->setAutoFillBackground(false);
+        auto* instanceLayout = new QVBoxLayout(m_instanceList);
+        instanceLayout->setContentsMargins(0, 4, 0, 4);
+        instanceLayout->setSpacing(8);
+        instanceLayout->addStretch(1);
+        instanceScroll->setWidget(m_instanceList);
+        railLayout->addWidget(instanceScroll, 1);
+        rail->setFixedWidth(76);
+        addRailButton(ui->actionCheckUpdate, false);
+        addRailButton(ui->actionSettings, false);
+        m_rail = rail;
+        m_railLayout = railLayout;
+
+        // the old toolbars are replaced by the rail
+        ui->mainToolBar->hide();
+        ui->newsToolBar->hide();
+        ui->instanceToolBar->hide();
+
+        // the banner on top: logo, title and the total playtime
+        auto* banner = new QFrame(this);
+        banner->setObjectName(QStringLiteral("headerBanner"));
+        banner->setFixedHeight(64);
+        auto* headerLayout = new QHBoxLayout(banner);
+        headerLayout->setContentsMargins(16, 4, 18, 4);
+        headerLayout->setSpacing(10);
+        headerLayout->addWidget(logoLabel);
+        headerLayout->addWidget(titleLabel);
+        headerLayout->addStretch(1);
+        headerLayout->addWidget(m_statusCenter);
+
+        m_pageStack = new QStackedWidget(this);
+        // pages must never dictate the minimum size of the window, so it stays resizable in both directions
+        m_pageStack->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+        setMinimumSize(760, 480);
+        // the old instance view stays alive (and hidden): it still drives the selection and the models
+        QWidget* oldCentral = takeCentralWidget();
+        auto* home = new QFrame(m_pageStack);
+        home->setObjectName(QStringLiteral("homePanel"));
+        auto* homeLayout = new QVBoxLayout(home);
+        auto* welcome = new QLabel(tr("<div align=\"center\"><span style=\"font-size:30px; font-weight:700;\">Welcome</span><br><br>"
+                                      "Pick an instance in the rail on the left,<br>or press <b>+</b> to create a new one.</div>"),
+                                   home);
+        welcome->setObjectName(QStringLiteral("welcomeLabel"));
+        welcome->setAlignment(Qt::AlignCenter);
+        homeLayout->addWidget(welcome);
+        m_pageStack->addWidget(home);
+        connect(m_pageStack, &QStackedWidget::currentChanged, this, [this] { refreshRailActive(); });
+
+        auto* bodyLayout = new QHBoxLayout;
+        bodyLayout->setSpacing(14);
+        bodyLayout->addWidget(rail);
+        bodyLayout->addWidget(m_pageStack, 1);
+
+        auto* rootLayout = new QVBoxLayout;
+        rootLayout->setContentsMargins(14, 10, 14, 14);
+        rootLayout->setSpacing(8);
+        rootLayout->addWidget(banner);
+        rootLayout->addLayout(bodyLayout, 1);
+
+        auto* root = new QWidget(this);
+        root->setObjectName(QStringLiteral("hcRoot"));
+        root->setLayout(rootLayout);
+        setCentralWidget(root);
+        oldCentral->setParent(root);
+        oldCentral->hide();
+    }
+
     // set the menu for the folders help, accounts, and export tool buttons
     {
-        auto foldersMenuButton = dynamic_cast<QToolButton*>(ui->mainToolBar->widgetForAction(ui->actionFoldersButton));
         ui->actionFoldersButton->setMenu(ui->foldersMenu);
-        foldersMenuButton->setPopupMode(QToolButton::InstantPopup);
+        m_foldersButton->setPopupMode(QToolButton::InstantPopup);
 
-        helpMenuButton = dynamic_cast<QToolButton*>(ui->mainToolBar->widgetForAction(ui->actionHelpButton));
         ui->actionHelpButton->setMenu(new QMenu(this));
         ui->actionHelpButton->menu()->addActions(ui->helpMenu->actions());
         ui->actionHelpButton->menu()->removeAction(ui->actionCheckUpdate);
         helpMenuButton->setPopupMode(QToolButton::InstantPopup);
 
-        auto accountMenuButton = dynamic_cast<QToolButton*>(ui->mainToolBar->widgetForAction(ui->actionAccountsButton));
-        accountMenuButton->setPopupMode(QToolButton::InstantPopup);
+        m_accountsButton->setPopupMode(QToolButton::InstantPopup);
 
         auto exportInstanceMenu = new QMenu(this);
         exportInstanceMenu->addAction(ui->actionExportInstanceZip);
@@ -240,6 +367,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
 #ifndef Q_OS_MAC
         ui->actionAddToPATH->setVisible(false);
 #endif
+
+        // the actions now live inside the selected instance card; the old side toolbar can still be shown from the View menu
+        ui->instanceToolBar->setVisible(false);
 
         // disabled until we have an instance selected
         ui->instanceToolBar->setEnabled(false);
@@ -317,6 +447,17 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         view->setAttribute(Qt::WA_MacShowFocusRect, false);
         connect(delegate, &ListViewDelegate::textChanged, this, &MainWindow::handleInstanceRename);
 
+        // the selected instance card shows these actions (nullptr = separator)
+        delegate->setCardActions({ ui->actionLaunchInstance, ui->actionKillInstance, nullptr, ui->actionEditInstance,
+                                   ui->actionChangeInstGroup, ui->actionViewSelectedInstFolder, ui->actionExportInstance,
+                                   ui->actionCopyInstance, ui->actionDeleteInstance, ui->actionCreateInstanceShortcut });
+        // keep their keyboard shortcuts working now that the instance toolbar is hidden by default
+        for (auto* cardAction : delegate->cardActions()) {
+            if (cardAction) {
+                view->addAction(cardAction);
+            }
+        }
+
         view->installEventFilter(this);
         view->setContextMenuPolicy(Qt::CustomContextMenu);
         connect(view, &QWidget::customContextMenuRequested, this, &MainWindow::showInstanceContextMenu);
@@ -326,6 +467,13 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         proxymodel->setSourceModel(APPLICATION->instances());
         proxymodel->sort(0);
         connect(proxymodel, &InstanceProxyModel::dataChanged, this, &MainWindow::instanceDataChanged);
+        connect(proxymodel, &QAbstractItemModel::rowsInserted, this, [this] { scheduleRailRebuild(); });
+        connect(proxymodel, &QAbstractItemModel::rowsRemoved, this, [this] { scheduleRailRebuild(); });
+        connect(proxymodel, &QAbstractItemModel::rowsMoved, this, [this] { scheduleRailRebuild(); });
+        connect(proxymodel, &QAbstractItemModel::modelReset, this, [this] { scheduleRailRebuild(); });
+        connect(proxymodel, &QAbstractItemModel::layoutChanged, this, [this] { scheduleRailRebuild(); });
+        connect(proxymodel, &QAbstractItemModel::dataChanged, this, [this] { scheduleRailRebuild(); });
+        scheduleRailRebuild();
 
         view->setModel(proxymodel);
         view->setSourceOfGroupCollapseStatus(
@@ -344,10 +492,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
 
     // Togglable status bar
     {
-        bool statusBarVisible = APPLICATION->settings()->get("StatusBarVisible").toBool();
-        ui->actionToggleStatusBar->setChecked(statusBarVisible);
-        connect(ui->actionToggleStatusBar, &QAction::toggled, this, &MainWindow::setStatusBarVisibility);
-        setStatusBarVisibility(statusBarVisible);
+        // HyperCore has no status bar: the bar at the very bottom of the window is gone for good
+        ui->actionToggleStatusBar->setVisible(false);
+        statusBar()->hide();
     }
 
     // Lock toolbars
@@ -373,14 +520,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     connect(APPLICATION, &Application::globalSettingsApplied, this, &MainWindow::globalSettingsClosed);
 
     m_statusLeft = new QLabel(tr("No instance selected"), this);
-    m_statusCenter = new QLabel(tr("Total playtime: 0s"), this);
-    statusBar()->addPermanentWidget(m_statusLeft, 1);
-    statusBar()->addPermanentWidget(m_statusCenter, 0);
-
-    // Add "manage accounts" button, right align
-    QWidget* spacer = new QWidget();
-    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    ui->mainToolBar->insertWidget(ui->actionAccountsButton, spacer);
+    m_statusLeft->hide();  // the instance name already shows on its card
 
     // Use undocumented property... https://stackoverflow.com/questions/7121718/create-a-scrollbar-in-a-submenu-qt
     ui->accountsMenu->setStyleSheet("QMenu { menu-scrollable: 1; }");
@@ -487,8 +627,8 @@ QMenu* MainWindow::createPopupMenu()
 }
 void MainWindow::setStatusBarVisibility(bool state)
 {
-    statusBar()->setVisible(state);
-    APPLICATION->settings()->set("StatusBarVisible", state);
+    Q_UNUSED(state);
+    statusBar()->hide();
 }
 void MainWindow::lockToolbars(bool state)
 {
@@ -584,7 +724,7 @@ void MainWindow::showInstanceContextMenu(const QPoint& pos)
 void MainWindow::updateMainToolBar()
 {
     ui->menuBar->setVisible(APPLICATION->settings()->get("MenuBarInsteadOfToolBar").toBool());
-    ui->mainToolBar->setVisible(ui->menuBar->isNativeMenuBar() || !APPLICATION->settings()->get("MenuBarInsteadOfToolBar").toBool());
+    // the rail replaces the main toolbar
 }
 
 void MainWindow::updateLaunchButton()
@@ -801,6 +941,7 @@ void MainWindow::updateNewsLabel()
         newsLabel->setText(tr("Loading news..."));
         newsLabel->setEnabled(false);
         ui->actionMoreNews->setVisible(false);
+        ui->newsToolBar->setVisible(false);
     } else {
         QList<NewsEntryPtr> entries = m_newsChecker->getNewsEntries();
         if (entries.length() > 0) {
@@ -811,6 +952,8 @@ void MainWindow::updateNewsLabel()
             newsLabel->setText(tr("No news available."));
             newsLabel->setEnabled(false);
             ui->actionMoreNews->setVisible(false);
+            // nothing to show: no empty bar at the bottom of the window
+            ui->newsToolBar->setVisible(false);
         }
     }
 }
@@ -900,17 +1043,22 @@ void MainWindow::addInstance(const QString& url, const QMap<QString, QString>& e
         groupName = APPLICATION->settings()->get("LastUsedGroupForNewInstance").toString();
     }
 
-    NewInstanceDialog newInstDlg(groupName, url, extra_info, this);
-    if (!newInstDlg.exec())
+    if (hasEmbeddedPage()) {
         return;
-
-    APPLICATION->settings()->set("LastUsedGroupForNewInstance", newInstDlg.instGroup());
-    APPLICATION->settings()->set("LastUsedInstDirForNewInstance", newInstDlg.instDir());
-
-    InstanceTask* creationTask = newInstDlg.extractTask();
-    if (creationTask) {
-        instanceFromInstanceTask(creationTask);
     }
+    auto* newInstDlg = new NewInstanceDialog(groupName, url, extra_info, this);
+    embedDialog(newInstDlg, [this, newInstDlg](int result) {
+        if (result != QDialog::Accepted)
+            return;
+
+        APPLICATION->settings()->set("LastUsedGroupForNewInstance", newInstDlg->instGroup());
+        APPLICATION->settings()->set("LastUsedInstDirForNewInstance", newInstDlg->instDir());
+
+        InstanceTask* creationTask = newInstDlg->extractTask();
+        if (creationTask) {
+            instanceFromInstanceTask(creationTask);
+        }
+    });
 }
 
 void MainWindow::on_actionAddInstance_triggered()
@@ -943,7 +1091,7 @@ void MainWindow::processURLs(QList<QUrl> urls)
                 } else {
                     CustomMessageBox::selectable(
                         this, tr("Error"),
-                        tr("Unsupported Modrinth link.\n\nPrism Launcher currently only supports modpack links such as "
+                        tr("Unsupported Modrinth link.\n\nHyperCore Launcher currently only supports modpack links such as "
                            "modrinth://modpack/fabulously-optimized."),
                         QMessageBox::Critical)
                         ->show();
@@ -1029,10 +1177,10 @@ void MainWindow::processURLs(QList<QUrl> urls)
                     receivedData.insert(it->first, it->second);
                 emit APPLICATION->oauthReplyRecieved(receivedData);
                 continue;
-            } else if ((url.scheme() == "prismlauncher" || url.scheme() == BuildConfig.LAUNCHER_APP_BINARY_NAME) && isExternalURLImport) {
-                // PrismLauncher URL protocol modpack import
-                // works for any prism fork
-                // preferred import format: prismlauncher://import?url=ENCODED
+            } else if ((url.scheme() == "hypercorelauncher" || url.scheme() == BuildConfig.LAUNCHER_APP_BINARY_NAME) && isExternalURLImport) {
+                // HyperCoreLauncher URL protocol modpack import
+                // works for any HyperCore/Prism fork
+                // preferred import format: hypercorelauncher://import?url=ENCODED
                 const auto host = url.host().toLower();
                 const auto path = url.path();
 
@@ -1046,7 +1194,7 @@ void MainWindow::processURLs(QList<QUrl> urls)
                     }
                 }
 
-                // alternative import format: prismlauncher://import/ENCODED
+                // alternative import format: hypercorelauncher://import/ENCODED
                 if (encodedTarget.isEmpty()) {
                     QString p = path;
 
@@ -1384,7 +1532,7 @@ void MainWindow::globalSettingsClosed()
     updateStatusCenter();
     updateCatState();
     // This needs to be done to prevent UI elements disappearing in the event the config is changed
-    // but Prism Launcher exits abnormally, causing the window state to never be saved:
+    // but HyperCore Launcher exits abnormally, causing the window state to never be saved:
     APPLICATION->settings()->set("MainWindowState", QString::fromUtf8(saveState().toBase64()));
     update();
 }
@@ -1685,6 +1833,7 @@ void MainWindow::instanceChanged(const QModelIndex& current, [[maybe_unused]] co
         m_nameLabel->setText(m_selectedInstance->name());
         m_statusLeft->setText(m_selectedInstance->getStatusbarDescription());
         updateStatusCenter();
+        updateVersionLabel();
         updateInstanceToolIcon(m_selectedInstance->iconKey());
 
         updateLaunchButton();
@@ -1726,6 +1875,7 @@ void MainWindow::selectionBad()
     updateLaunchButton();
     m_nameLabel->setText(tr("No Instance Selected"));
     updateInstanceToolIcon("default");
+    updateVersionLabel();
 
     // ...and then see if we can enable the previously selected instance
     setSelectedInstanceById(APPLICATION->settings()->get("SelectedInstance").toString());
@@ -1764,8 +1914,23 @@ void MainWindow::checkInstancePathForProblems()
     }
 }
 
+void MainWindow::updateVersionLabel()
+{
+    QString text = tr("Minecraft Version");
+    if (m_selectedInstance) {
+        if (auto* packProfile = m_selectedInstance->getPackProfile()) {
+            const QString version = packProfile->getComponentVersion("net.minecraft");
+            if (!version.isEmpty()) {
+                text = tr("Minecraft %1").arg(version);
+            }
+        }
+    }
+    m_versionLabel->setText(text);
+}
+
 void MainWindow::updateStatusCenter()
 {
+    // toolbar-managed widgets are shown/hidden through their action
     m_statusCenter->setVisible(APPLICATION->settings()->get("ShowGlobalGameTime").toBool());
     int64_t timePlayed = APPLICATION->playtimeSettings()->get("TotalPlayTime").toLongLong();
     if (timePlayed > 0) {
@@ -1829,5 +1994,241 @@ void MainWindow::handleInstanceRename(const QString& before, const QString& afte
 
     if (syncGroup) {
         APPLICATION->instances()->setInstanceGroup(newID, origGroup);
+    }
+}
+
+// ---- pages shown inside the main window ----
+
+bool MainWindow::hasEmbeddedPage() const
+{
+    return m_pageStack && m_pageStack->currentIndex() != 0;
+}
+
+static QFrame* makeEmbeddedPanel(QWidget* content, QStackedWidget* stack, const QString& title = QString(), const QString& subtitle = QString(),
+                                 const QIcon& icon = QIcon(), const QList<QAction*>& actions = {})
+{
+    auto* panel = new QFrame(stack);
+    panel->setObjectName(QStringLiteral("embeddedPanel"));
+    auto* layout = new QVBoxLayout(panel);
+    layout->setContentsMargins(22, 16, 22, 16);
+    layout->setSpacing(8);
+
+    if (title.isEmpty()) {
+        // a dialog: the big title with an accent line under it
+        auto* titleLabel = new QLabel(content->windowTitle(), panel);
+        titleLabel->setObjectName(QStringLiteral("panelTitle"));
+        QObject::connect(content, &QWidget::windowTitleChanged, titleLabel, &QLabel::setText);
+        layout->addWidget(titleLabel);
+    } else {
+        // an instance: icon, name, details and its actions as chips
+        auto* head = new QHBoxLayout;
+        head->setSpacing(14);
+        auto* iconLabel = new QLabel(panel);
+        iconLabel->setPixmap(icon.pixmap(52, 52));
+        iconLabel->setFixedSize(56, 56);
+        head->addWidget(iconLabel);
+        auto* texts = new QVBoxLayout;
+        texts->setSpacing(0);
+        auto* titleLabel = new QLabel(title, panel);
+        titleLabel->setObjectName(QStringLiteral("panelTitle"));
+        auto* subtitleLabel = new QLabel(subtitle, panel);
+        subtitleLabel->setObjectName(QStringLiteral("panelSubtitle"));
+        texts->addWidget(titleLabel);
+        texts->addWidget(subtitleLabel);
+        head->addLayout(texts, 1);
+        layout->addLayout(head);
+
+        auto* chips = new QHBoxLayout;
+        chips->setSpacing(8);
+        for (auto* action : actions) {
+            auto* chip = new QToolButton(panel);
+            chip->setObjectName(action->objectName() == QStringLiteral("actionDeleteInstance") ? QStringLiteral("dangerChip")
+                                                                                                : QStringLiteral("actionChip"));
+            chip->setDefaultAction(action);
+            chip->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+            chip->setIconSize(QSize(18, 18));
+            chip->setFocusPolicy(Qt::NoFocus);
+            if (action->menu()) {
+                chip->setPopupMode(QToolButton::InstantPopup);
+            }
+            chips->addWidget(chip);
+        }
+        chips->addStretch(1);
+        layout->addLayout(chips);
+    }
+    auto* line = new QFrame(panel);
+    line->setObjectName(QStringLiteral("panelTitleLine"));
+    line->setFixedHeight(3);
+    layout->addWidget(line);
+
+    content->setParent(panel, Qt::Widget);
+    content->setObjectName(QStringLiteral("embeddedPage"));
+    content->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+    layout->addWidget(content, 1);
+    return panel;
+}
+
+void MainWindow::embedDialog(QDialog* dialog, std::function<void(int)> onDone)
+{
+    auto* panel = makeEmbeddedPanel(dialog, m_pageStack);
+    dialog->setAttribute(Qt::WA_Moved);
+    m_pageStack->addWidget(panel);
+
+    connect(dialog, &QDialog::finished, this, [this, panel, onDone](int result) {
+        m_pageStack->setCurrentIndex(0);
+        if (onDone) {
+            onDone(result);
+        }
+        m_pageStack->removeWidget(panel);
+        panel->deleteLater();
+    });
+
+    m_pageStack->setCurrentWidget(panel);
+    dialog->show();
+}
+
+void MainWindow::embedInstanceWindow(InstanceWindow* window, const QString& instanceId)
+{
+    auto* instance = APPLICATION->instances()->getInstanceById(instanceId);
+    const QString name = instance ? instance->name() : window->windowTitle();
+    const QString details = instance ? instance->getStatusbarDescription() : QString();
+    const QIcon icon = instance ? APPLICATION->icons()->getIcon(instance->iconKey()) : QIcon();
+
+    auto* panel = makeEmbeddedPanel(window, m_pageStack, name, details, icon,
+                                    { ui->actionChangeInstGroup, ui->actionViewSelectedInstFolder, ui->actionExportInstance,
+                                      ui->actionCopyInstance, ui->actionDeleteInstance, ui->actionCreateInstanceShortcut });
+    m_pageStack->addWidget(panel);
+    m_instancePanels.insert(instanceId, panel);
+
+    connect(window, &InstanceWindow::isClosing, this, [this, panel, instanceId] {
+        m_instancePanels.remove(instanceId);
+        m_pageStack->setCurrentIndex(0);
+        m_pageStack->removeWidget(panel);
+        panel->deleteLater();
+        refreshRailActive();
+    });
+
+    m_pageStack->setCurrentWidget(panel);
+    window->show();
+    refreshRailActive();
+}
+
+void MainWindow::scheduleRailRebuild()
+{
+    if (m_railRebuildPending) {
+        return;
+    }
+    m_railRebuildPending = true;
+    QTimer::singleShot(0, this, [this] {
+        m_railRebuildPending = false;
+        rebuildRailInstances();
+    });
+}
+
+void MainWindow::rebuildRailInstances()
+{
+    auto* layout = qobject_cast<QVBoxLayout*>(m_instanceList->layout());
+    while (layout->count() > 1) {
+        auto* item = layout->takeAt(0);
+        if (auto* widget = item->widget()) {
+            widget->hide();
+            widget->deleteLater();
+        }
+        delete item;
+    }
+
+    QString previousGroup;
+    bool first = true;
+    for (int row = 0; row < proxymodel->rowCount(); ++row) {
+        const QModelIndex index = proxymodel->index(row, 0);
+        const QString id = index.data(InstanceList::InstanceIDRole).toString();
+        const QString group = index.data(InstanceList::GroupRole).toString();
+        if (!first && group != previousGroup) {
+            auto* groupLine = new QFrame(m_instanceList);
+            groupLine->setObjectName(QStringLiteral("railDivider"));
+            groupLine->setFixedHeight(2);
+            layout->insertWidget(layout->count() - 1, groupLine);
+        }
+        first = false;
+        previousGroup = group;
+
+        QIcon icon = index.data(Qt::DecorationRole).value<QIcon>();
+        if (icon.isNull()) {
+            icon = APPLICATION->icons()->getIcon(QStringLiteral("grass"));
+        }
+        auto* button = new QToolButton(m_instanceList);
+        button->setObjectName(QStringLiteral("railButton"));
+        button->setIcon(icon);
+        button->setIconSize(QSize(36, 36));
+        button->setFixedSize(52, 52);
+        button->setFocusPolicy(Qt::NoFocus);
+        button->setToolTip(group.isEmpty() ? index.data(Qt::DisplayRole).toString()
+                                           : index.data(Qt::DisplayRole).toString() + QStringLiteral("  ·  ") + group);
+        button->setProperty("instanceId", id);
+        button->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(button, &QToolButton::clicked, this, [this, id] { openInstanceFromRail(id); });
+        connect(button, &QWidget::customContextMenuRequested, this, [this, id, button](const QPoint& pos) {
+            setSelectedInstanceById(id);
+            QMenu menu(this);
+            menu.addAction(ui->actionLaunchInstance);
+            menu.addAction(ui->actionKillInstance);
+            menu.addSeparator();
+            menu.addAction(ui->actionEditInstance);
+            menu.addAction(ui->actionChangeInstGroup);
+            menu.addAction(ui->actionViewSelectedInstFolder);
+            menu.addAction(ui->actionExportInstance);
+            menu.addAction(ui->actionCopyInstance);
+            menu.addAction(ui->actionDeleteInstance);
+            menu.addAction(ui->actionCreateInstanceShortcut);
+            menu.exec(button->mapToGlobal(pos));
+        });
+        layout->insertWidget(layout->count() - 1, button);
+    }
+    refreshRailActive();
+}
+
+void MainWindow::refreshRailActive()
+{
+    if (!m_instanceList) {
+        return;
+    }
+    for (auto* button : m_instanceList->findChildren<QToolButton*>()) {
+        const QString id = button->property("instanceId").toString();
+        const bool active = m_instancePanels.contains(id) && m_pageStack->currentWidget() == m_instancePanels.value(id);
+        if (button->property("active").toBool() != active || !button->property("active").isValid()) {
+            button->setProperty("active", active);
+            button->style()->unpolish(button);
+            button->style()->polish(button);
+        }
+    }
+}
+
+void MainWindow::openInstanceFromRail(const QString& id)
+{
+    auto* instance = APPLICATION->instances()->getInstanceById(id);
+    if (!instance) {
+        return;
+    }
+    // clicking the instance that is already open goes back to the home page
+    if (m_instancePanels.contains(id) && m_pageStack->currentWidget() == m_instancePanels.value(id)) {
+        m_pageStack->setCurrentIndex(0);
+        return;
+    }
+    setSelectedInstanceById(id);
+    if (instance->canEdit()) {
+        APPLICATION->showInstanceWindow(instance);
+    } else {
+        CustomMessageBox::selectable(this, tr("Instance not editable"),
+                                     tr("This instance is not editable. It may be broken, invalid, or too old. Check logs for details."),
+                                     QMessageBox::Critical)
+            ->show();
+    }
+}
+
+void MainWindow::showEmbeddedWidget(QWidget* child)
+{
+    auto* parent = child ? child->parentWidget() : nullptr;
+    if (parent && parent->objectName() == QStringLiteral("embeddedPanel") && m_pageStack->indexOf(parent) >= 0) {
+        m_pageStack->setCurrentWidget(parent);
     }
 }

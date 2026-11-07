@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 /*
- *  Prism Launcher - Minecraft Launcher
+ *  HyperCore Launcher - Minecraft Launcher
  *  Copyright (C) 2022 Sefa Eyeoglu <contact@scrumplex.net>
  *  Copyright (C) 2023 TheKodeToad <TheKodeToad@proton.me>
  *
@@ -87,6 +87,7 @@ InstanceWindow::InstanceWindow(MinecraftInstance* instance, QWidget* parent) : Q
         horizontalLayout->addSpacerItem(spacer);
 
         m_launchButton = new QToolButton(this);
+        m_launchButton->setObjectName("launchButton");
         m_launchButton->setText(tr("&Launch"));
         m_launchButton->setToolTip(tr("Launch the instance"));
         m_launchButton->setPopupMode(QToolButton::MenuButtonPopup);
@@ -103,6 +104,7 @@ InstanceWindow::InstanceWindow(MinecraftInstance* instance, QWidget* parent) : Q
         m_restartButton->hide();
 
         m_killButton = new QPushButton(this);
+        m_killButton->setObjectName("killButton");
         m_killButton->setText(tr("&Kill"));
         m_killButton->setToolTip(tr("Kill the running instance"));
         m_killButton->setShortcut(QKeySequence(tr("Ctrl+K")));
@@ -221,8 +223,11 @@ void InstanceWindow::closeEvent(QCloseEvent* event)
         return;
     }
 
-    APPLICATION->settings()->set("ConsoleWindowState", QString::fromUtf8(saveState().toBase64()));
-    APPLICATION->settings()->set("ConsoleWindowGeometry", QString::fromUtf8(saveGeometry().toBase64()));
+    // an editor embedded in the main window has no window geometry of its own to remember
+    if (isWindow()) {
+        APPLICATION->settings()->set("ConsoleWindowState", QString::fromUtf8(saveState().toBase64()));
+        APPLICATION->settings()->set("ConsoleWindowGeometry", QString::fromUtf8(saveGeometry().toBase64()));
+    }
     emit isClosing();
     event->accept();
 }

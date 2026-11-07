@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 /*
- *  Prism Launcher - Minecraft Launcher
+ *  HyperCore Launcher - Minecraft Launcher
  *  Copyright (C) 2022 Sefa Eyeoglu <contact@scrumplex.net>
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -36,18 +36,22 @@
 #include "InstanceView.h"
 
 #include <QAccessible>
+#include <QAction>
 #include <QApplication>
 #include <QCache>
 #include <QDrag>
 #include <QFont>
 #include <QListView>
+#include <QMenu>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPersistentModelIndex>
 #include <QScrollBar>
 #include <QtMath>
 
+#include "InstanceDelegate.h"
 #include "VisualGroup.h"
 #include "ui/themes/CatPainter.h"
 #include "ui/themes/ThemeManager.h"
@@ -57,8 +61,13 @@
 
 InstanceView::InstanceView(QWidget* parent) : QAbstractItemView(parent)
 {
+    // every cell is one instance card
+    m_itemWidth = ListViewDelegate::CardWidth;
+    setMinimumWidth(m_leftMargin + m_rightMargin + m_itemWidth + m_spacing + 30);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setMouseTracking(true);
+    viewport()->setAutoFillBackground(false);
     setAcceptDrops(true);
     setAutoScroll(true);
     setPaintCat(APPLICATION->settings()->get("TheCat").toBool());
@@ -122,6 +131,13 @@ void InstanceView::currentChanged(const QModelIndex& current, const QModelIndex&
 #endif /* !QT_NO_ACCESSIBILITY */
 }
 
+void InstanceView::selectionChanged(const QItemSelection& selected, const QItemSelection& deselected)
+{
+    QAbstractItemView::selectionChanged(selected, deselected);
+    // the selected card expands to show its actions, so the cell sizes change
+    scheduleDelayedItemsLayout();
+}
+
 class LocaleString : public QString {
    public:
     LocaleString(const char* s) : QString(s) {}
@@ -135,17 +151,20 @@ inline bool operator<(const LocaleString& lhs, const LocaleString& rhs)
 
 void InstanceView::updateScrollbar()
 {
-    int previousScroll = verticalScrollBar()->value();
+    const int previousScroll = verticalScrollBar()->value();
+    const int previousHScroll = horizontalScrollBar()->value();
     if (m_groups.isEmpty()) {
         verticalScrollBar()->setRange(0, 0);
+        horizontalScrollBar()->setRange(0, 0);
     } else {
-        int totalHeight = 0;
-        // top margin
-        totalHeight += m_categoryMargin;
+        int tallest = 0;
         int itemScroll = 0;
+        int x = m_leftMargin;
         for (auto category : m_groups) {
-            category->m_verticalPosition = totalHeight;
-            totalHeight += category->totalHeight() + m_categoryMargin;
+            category->m_verticalPosition = m_categoryMargin;
+            category->m_horizontalPosition = x;
+            x += columnWidth() + m_columnGap;
+            tallest = qMax(tallest, m_categoryMargin + category->totalHeight());
             if (!itemScroll && category->totalHeight() != 0) {
                 itemScroll = category->contentHeight() / category->numRows();
             }
@@ -153,16 +172,21 @@ void InstanceView::updateScrollbar()
         // do not divide by zero
         if (itemScroll == 0)
             itemScroll = 64;
+        tallest += m_bottomMargin;
+        const int totalWidth = x - m_columnGap + m_rightMargin;
 
-        totalHeight += m_bottomMargin;
         verticalScrollBar()->setSingleStep(itemScroll);
         const int rowsPerPage = qMax(viewport()->height() / itemScroll, 1);
         verticalScrollBar()->setPageStep(rowsPerPage * itemScroll);
+        verticalScrollBar()->setRange(0, qMax(0, tallest - viewport()->height()));
 
-        verticalScrollBar()->setRange(0, totalHeight - height());
+        horizontalScrollBar()->setSingleStep(columnWidth());
+        horizontalScrollBar()->setPageStep(viewport()->width());
+        horizontalScrollBar()->setRange(0, qMax(0, totalWidth - viewport()->width()));
     }
 
     verticalScrollBar()->setValue(qMin(previousScroll, verticalScrollBar()->maximum()));
+    horizontalScrollBar()->setValue(qMin(previousHScroll, horizontalScrollBar()->maximum()));
 }
 
 void InstanceView::updateGeometries()
@@ -247,7 +271,8 @@ QString InstanceView::groupNameAt(const QPoint& point)
 
 int InstanceView::calculateItemsPerRow() const
 {
-    return qFloor((qreal)(contentWidth()) / (qreal)(itemWidth() + m_spacing));
+    // groups are columns, every card sits in its own row
+    return 1;
 }
 
 int InstanceView::contentWidth() const
@@ -306,9 +331,43 @@ void InstanceView::mousePressEvent(QMouseEvent* event)
     }
 }
 
+void InstanceView::leaveEvent(QEvent* event)
+{
+    m_hoverPos = QPoint(-1, -1);
+    if (auto* cardDelegate = qobject_cast<ListViewDelegate*>(itemDelegate())) {
+        cardDelegate->setHoverPos(m_hoverPos);
+    }
+    viewport()->update();
+    QAbstractItemView::leaveEvent(event);
+}
+
+void InstanceView::wheelEvent(QWheelEvent* event)
+{
+    // no scrollbars: a vertical wheel scrolls the cards, and moves sideways when there is nothing to scroll vertically
+    if (verticalScrollBar()->maximum() == 0 && event->angleDelta().x() == 0 && horizontalScrollBar()->maximum() > 0) {
+        horizontalScrollBar()->setValue(horizontalScrollBar()->value() - event->angleDelta().y());
+        event->accept();
+        return;
+    }
+    if (event->modifiers() & Qt::ShiftModifier) {
+        horizontalScrollBar()->setValue(horizontalScrollBar()->value() - event->angleDelta().y());
+        event->accept();
+        return;
+    }
+    QAbstractItemView::wheelEvent(event);
+}
+
 void InstanceView::mouseMoveEvent(QMouseEvent* event)
 {
     executeDelayedItemsLayout();
+
+    if (m_hoverPos != event->pos()) {
+        m_hoverPos = event->pos();
+        if (auto* cardDelegate = qobject_cast<ListViewDelegate*>(itemDelegate())) {
+            cardDelegate->setHoverPos(m_hoverPos);
+        }
+        viewport()->update();
+    }
 
     QPoint topLeft;
     QPoint visualPos = event->pos();
@@ -387,6 +446,25 @@ void InstanceView::mouseReleaseEvent(QMouseEvent* event)
         }
     }
 
+    // a click on one of the action rows shown inside the (already selected) card
+    if (event->button() == Qt::LeftButton && index.isValid() && index == m_pressedIndex && m_pressedAlreadySelected) {
+        if (auto* cardDelegate = qobject_cast<ListViewDelegate*>(itemDelegate())) {
+            QRect row;
+            bool onArrow = false;
+            if (QAction* action = cardDelegate->actionAt(visualRect(index), visualPos, &row, &onArrow)) {
+                m_ctrlDragSelectionFlag = QItemSelectionModel::NoUpdate;
+                setState(NoState);
+                if (onArrow && action->menu()) {
+                    action->menu()->popup(viewport()->mapToGlobal(row.bottomLeft()));
+                } else {
+                    action->trigger();
+                }
+                event->accept();
+                return;
+            }
+        }
+    }
+
     m_ctrlDragSelectionFlag = QItemSelectionModel::NoUpdate;
 
     setState(NoState);
@@ -418,6 +496,15 @@ void InstanceView::mouseDoubleClickEvent(QMouseEvent* event)
         mousePressEvent(&me);
         return;
     }
+    // a double click on an action row must not also launch the instance
+    if (auto* cardDelegate = qobject_cast<ListViewDelegate*>(itemDelegate())) {
+        if (selectionModel()->isSelected(index) && cardDelegate->actionAt(visualRect(index), event->pos())) {
+            m_pressedIndex = QModelIndex();
+            event->accept();
+            return;
+        }
+    }
+
     // signal handlers may change the model
     QPersistentModelIndex persistent = index;
     emit doubleClicked(persistent);
@@ -442,11 +529,20 @@ void InstanceView::setPaintCat(bool visible)
     }
 }
 
-void InstanceView::paintEvent([[maybe_unused]] QPaintEvent* event)
+void InstanceView::paintEvent(QPaintEvent* event)
 {
     executeDelayedItemsLayout();
 
     QPainter painter(this->viewport());
+
+    // the rounded panel behind everything; the content is clipped to it
+    {
+        painter.setRenderHint(QPainter::Antialiasing);
+        QPainterPath panel;
+        panel.addRoundedRect(QRectF(viewport()->rect()), 32, 32);
+        painter.fillPath(panel, palette().color(QPalette::Base));
+        painter.setClipPath(panel);
+    }
 
     if (m_cat) {
         m_cat->paint(&painter, this->viewport()->rect());
@@ -507,8 +603,13 @@ void InstanceView::paintEvent([[maybe_unused]] QPaintEvent* event)
         int height = category->totalHeight();
         option.rect.setTop(y);
         option.rect.setHeight(height);
-        option.rect.setLeft(m_leftMargin);
-        option.rect.setRight(wpWidth - m_rightMargin);
+        const int columnLeft = category->m_horizontalPosition - horizontalOffset();
+        if (columnLeft + columnWidth() < 0 || columnLeft > wpWidth) {
+            option.rect = backup;
+            continue;
+        }
+        option.rect.setLeft(columnLeft);
+        option.rect.setWidth(columnWidth());
         category->drawHeader(&painter, option);
         option.rect = backup;
     }
@@ -520,6 +621,9 @@ void InstanceView::paintEvent([[maybe_unused]] QPaintEvent* event)
         }
         Qt::ItemFlags flags = index.flags();
         option.rect = visualRect(index);
+        if (!option.rect.intersects(event->rect())) {
+            continue;
+        }
         option.features |= QStyleOptionViewItem::WrapText;
         if (flags & Qt::ItemIsSelectable && selectionModel()->isSelected(index)) {
             option.state |= selectionModel()->isSelected(index) ? QStyle::State_Selected : QStyle::State_None;
@@ -527,6 +631,11 @@ void InstanceView::paintEvent([[maybe_unused]] QPaintEvent* event)
             option.state &= ~QStyle::State_Selected;
         }
         option.state |= (index == currentIndex()) ? QStyle::State_HasFocus : QStyle::State_None;
+        if (option.rect.contains(m_hoverPos) && state() != DraggingState) {
+            option.state |= QStyle::State_MouseOver;
+        } else {
+            option.state &= ~QStyle::State_MouseOver;
+        }
         if (!(flags & Qt::ItemIsEnabled)) {
             option.state &= ~QStyle::State_Enabled;
         }
@@ -585,7 +694,6 @@ void InstanceView::dragEnterEvent(QDragEnterEvent* event)
         return;
     }
     m_lastDragPosition = event->position().toPoint() + offset();
-    viewport()->update();
     event->accept();
 }
 
@@ -669,10 +777,17 @@ void InstanceView::startDrag(Qt::DropActions supportedActions)
     }
     QRect rect;
     QPixmap pixmap = renderToPixmap(indexes, &rect);
+    QPoint hotSpot = m_pressedPosition - rect.topLeft();
+    constexpr int maxPreviewHeight = 180;
+    if (pixmap.height() > maxPreviewHeight) {
+        const qreal scale = qreal(maxPreviewHeight) / pixmap.height();
+        pixmap = pixmap.scaledToHeight(maxPreviewHeight, Qt::SmoothTransformation);
+        hotSpot = QPoint(qRound(hotSpot.x() * scale), qRound(hotSpot.y() * scale));
+    }
     QDrag* drag = new QDrag(this);
     drag->setPixmap(pixmap);
     drag->setMimeData(mimeData);
-    drag->setHotSpot(m_pressedPosition - rect.topLeft());
+    drag->setHotSpot(hotSpot);
     Qt::DropAction defaultDropAction = Qt::IgnoreAction;
     if (this->defaultDropAction() != Qt::IgnoreAction && (supportedActions & this->defaultDropAction())) {
         defaultDropAction = this->defaultDropAction();
@@ -708,10 +823,13 @@ QRect InstanceView::geometryRect(const QModelIndex& index) const
 
     QStyleOptionViewItem option;
     initViewItemOption(&option);
+    if (selectionModel() && selectionModel()->isSelected(index)) {
+        option.state |= QStyle::State_Selected;
+    }
 
     QRect out;
-    out.setTop(cat->verticalPosition() + cat->headerHeight() + 5 + cat->rowTopOf(index));
-    out.setLeft(m_spacing + x * (itemWidth() + m_spacing));
+    out.setTop(cat->verticalPosition() + cat->headerHeight() + VisualGroup::ContainerPadding + cat->rowTopOf(index));
+    out.setLeft(cat->m_horizontalPosition + VisualGroup::ContainerPadding + x * (itemWidth() + m_spacing));
     out.setSize(itemDelegate()->sizeHint(option, index));
     m_geometryCache.insert(row, new QRect(out));
     return out;
@@ -961,10 +1079,10 @@ int InstanceView::verticalOffset() const
     return verticalScrollBar()->value();
 }
 
-void InstanceView::scrollContentsBy(int dx, int dy)
+void InstanceView::scrollContentsBy([[maybe_unused]] int dx, [[maybe_unused]] int dy)
 {
-    scrollDirtyRegion(dx, dy);
-    viewport()->scroll(dx, dy);
+    // repaint instead of scrolling pixels: the rounded corners of the panel must not move
+    viewport()->update();
 }
 
 void InstanceView::scrollTo(const QModelIndex& index, ScrollHint hint)
@@ -979,6 +1097,11 @@ void InstanceView::scrollTo(const QModelIndex& index, ScrollHint hint)
     }
 
     verticalScrollBar()->setValue(verticalScrollToValue(index, rect, hint));
+    if (rect.left() < 0) {
+        horizontalScrollBar()->setValue(horizontalScrollBar()->value() + rect.left() - m_spacing);
+    } else if (rect.right() > viewport()->width()) {
+        horizontalScrollBar()->setValue(horizontalScrollBar()->value() + rect.right() - viewport()->width() + m_spacing);
+    }
 }
 
 int InstanceView::verticalScrollToValue([[maybe_unused]] const QModelIndex& index, const QRect& rect, QListView::ScrollHint hint) const

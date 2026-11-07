@@ -1,6 +1,6 @@
 ## Prism Launcher
 
-     Prism Launcher - Minecraft Launcher
+     HyperCore Launcher - Minecraft Launcher
      Copyright (C) 2022-2026 Prism Launcher Contributors
 
      This program is free software: you can redistribute it and/or modify

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 /*
- *  Prism Launcher - Minecraft Launcher
+ *  HyperCore Launcher - Minecraft Launcher
  *  Copyright (C) 2022 Sefa Eyeoglu <contact@scrumplex.net>
  *  Copyright (C) 2023 TheKodeToad <TheKodeToad@proton.me>
  *
@@ -41,6 +41,9 @@
 #pragma once
 
 #include <QMainWindow>
+#include <functional>
+#include <QHash>
+#include <QIcon>
 #include <QProcess>
 #include <QTimer>
 
@@ -49,6 +52,7 @@
 class EditableLabel;
 class LaunchController;
 class NewsChecker;
+class QDialog;
 class QLabel;
 class QTextEdit;
 class QToolButton;
@@ -67,6 +71,15 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
 
    public:
+    /// Show a dialog inside the main window (instead of as a separate window). \a onDone runs when the dialog finishes.
+    void embedDialog(QDialog* dialog, std::function<void(int)> onDone = {});
+    /// Show an instance window (the instance editor) inside the main window.
+    void embedInstanceWindow(class InstanceWindow* window, const QString& instanceId);
+    /// True while a page other than the instance list is showing.
+    bool hasEmbeddedPage() const;
+    /// Bring the page containing \a child to the front if it is shown inside the main window.
+    void showEmbeddedWidget(QWidget* child);
+
     explicit MainWindow(QWidget* parent = 0);
     ~MainWindow();
 
@@ -228,6 +241,7 @@ class MainWindow : public QMainWindow {
     void updateInstanceToolIcon(QString new_icon);
     void setSelectedInstanceById(const QString& id);
     void updateStatusCenter();
+    void updateVersionLabel();
     void setInstanceActionsEnabled(bool enabled);
 
     void runModalTask(Task* task);
@@ -243,11 +257,27 @@ class MainWindow : public QMainWindow {
     QToolButton* newsLabel = nullptr;
     QLabel* m_statusLeft = nullptr;
     QLabel* m_statusCenter = nullptr;
+    QToolBar* m_headerToolBar = nullptr;
+    QLabel* m_versionLabel = nullptr;
+    QAction* m_statusCenterAction = nullptr;
     QToolButton* m_changeIconButton = nullptr;
     QAction* m_instanceToolBarTopSeparator = nullptr;
     QAction* m_instanceInfoWidget = nullptr;
     EditableLabel* m_nameLabel = nullptr;
     QToolButton* helpMenuButton = nullptr;
+    QToolButton* m_foldersButton = nullptr;
+    QToolButton* m_accountsButton = nullptr;
+    QToolButton* m_addButton = nullptr;
+    QWidget* m_instanceList = nullptr;
+    QHash<QString, QWidget*> m_instancePanels;
+    bool m_railRebuildPending = false;
+    void scheduleRailRebuild();
+    void rebuildRailInstances();
+    void refreshRailActive();
+    void openInstanceFromRail(const QString& id);
+    class QVBoxLayout* m_railLayout = nullptr;
+    class QFrame* m_rail = nullptr;
+    class QStackedWidget* m_pageStack = nullptr;
     KonamiCode* secretEventFilter = nullptr;
 
     unique_qobject_ptr<NewsChecker> m_newsChecker;

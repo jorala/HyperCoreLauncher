@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 /*
- *  Prism Launcher - Minecraft Launcher
+ *  HyperCore Launcher - Minecraft Launcher
  *  Copyright (C) 2022 Sefa Eyeoglu <contact@scrumplex.net>
  *  Copyright (c) 2022 Jamie Mansfield <jmansfield@cadixdev.org>
  *  Copyright (C) 2023 TheKodeToad <TheKodeToad@proton.me>
@@ -105,8 +105,21 @@ PageContainer::PageContainer(BasePageProvider* pageProvider, QString defaultId, 
     m_pageList->setIconSize(QSize(pageIconSize, pageIconSize));
     m_pageList->setSelectionMode(QAbstractItemView::SingleSelection);
     m_pageList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-    m_pageList->setSizeAdjustPolicy(QAbstractScrollArea::AdjustToContents);
+    m_pageList->setSizeAdjustPolicy(QAbstractScrollArea::AdjustIgnored);
     m_pageList->setModel(m_proxyModel);
+
+    // the page list is a strip of pills across the top instead of a column on the left
+    m_pageList->setFlow(QListView::LeftToRight);
+    m_pageList->setWrapping(true);
+    m_pageList->setResizeMode(QListView::Adjust);
+    m_pageList->setSpacing(4);
+    m_pageList->setFrameShape(QFrame::NoFrame);
+    m_pageList->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_pageList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    {
+        const int rows = qBound(1, static_cast<int>((pages.size() + 4) / 5), 3);
+        m_pageList->setFixedHeight(rows * 54 + 16);
+    }
     connect(m_pageList->selectionModel(), &QItemSelectionModel::currentRowChanged, this, &PageContainer::currentChanged);
     m_pageStack->setStackingMode(QStackedLayout::StackOne);
     m_pageList->setFocus();
@@ -163,7 +176,9 @@ void PageContainer::createUI()
 {
     m_pageStack = new QStackedLayout;
     m_pageList = new PageView;
+    m_pageList->setObjectName("pageSidebar");
     m_header = new QLabel();
+    m_header->setObjectName("pageHeader");
 
     QFont headerLabelFont = m_header->font();
     headerLabelFont.setBold(true);
@@ -177,17 +192,23 @@ void PageContainer::createUI()
     const int leftMargin = APPLICATION->style()->pixelMetric(QStyle::PM_LayoutLeftMargin);
     headerHLayout->addSpacerItem(new QSpacerItem(leftMargin, 0, QSizePolicy::Fixed, QSizePolicy::Ignored));
     headerHLayout->addWidget(m_header);
+    headerHLayout->addStretch(1);
     headerHLayout->setContentsMargins(0, 6, 0, 0);
+    headerHLayout->setSpacing(8);
+    m_headerLayout = headerHLayout;
 
     m_pageStack->setContentsMargins(0, 0, 0, 0);
     m_pageStack->addWidget(new QWidget(this));
 
     m_layout = new QGridLayout;
-    m_layout->addLayout(headerHLayout, 0, 1, 1, 1);
-    m_layout->addWidget(m_pageList, 0, 0, 3, 1);
-    m_layout->addLayout(m_pageStack, 1, 1, 1, 1);
-    m_layout->setColumnStretch(1, 4);
-    m_layout->setContentsMargins(0, 0, 0, 0);
+    // top navigation strip, then the page title, the page itself and the buttons at the bottom
+    m_layout->addWidget(m_pageList, 0, 0, 1, 1);
+    m_layout->addLayout(headerHLayout, 1, 0, 1, 1);
+    m_layout->addLayout(m_pageStack, 2, 0, 1, 1);
+    m_layout->setColumnStretch(0, 1);
+    m_layout->setRowStretch(2, 1);
+    m_layout->setContentsMargins(8, 8, 8, 8);
+    m_layout->setVerticalSpacing(6);
     setLayout(m_layout);
 }
 
@@ -202,19 +223,21 @@ void PageContainer::retranslate()
     }
 }
 
+// the OK / Cancel / Close buttons sit at the top right of the page instead of the bottom
 void PageContainer::addButtons(QWidget* buttons)
 {
-    m_layout->addWidget(buttons, 2, 1, 1, 2);
+    m_headerLayout->addWidget(buttons);
 }
 
 void PageContainer::addButtons(QLayout* buttons)
 {
-    m_layout->addLayout(buttons, 2, 1, 1, 2);
+    m_headerLayout->addLayout(buttons);
 }
 
 void PageContainer::useSidebarStyle(bool sidebar)
 {
-    m_pageList->setProperty("_kde_side_panel_view", sidebar);
+    // the sidebar look no longer applies, the list is a top strip
+    m_pageList->setProperty("_kde_side_panel_view", false && sidebar);
 }
 
 void PageContainer::showPage(int row)

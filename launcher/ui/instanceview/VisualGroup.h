@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 /*
- *  Prism Launcher - Minecraft Launcher
+ *  HyperCore Launcher - Minecraft Launcher
  *  Copyright (C) 2023 Tayou <git@tayou.org>
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -57,6 +57,9 @@ struct VisualGroup {
     VisualGroup(QString text, InstanceView* view);
     explicit VisualGroup(const VisualGroup* other);
 
+    /// padding between the edge of a group's container and its cards
+    static constexpr int ContainerPadding = 14;
+
     /* data */
     InstanceView* view = nullptr;
     QString text;
@@ -64,6 +67,8 @@ struct VisualGroup {
     QList<VisualRow> rows;
     int firstItemIndex = 0;
     int m_verticalPosition = 0;
+    /// x of the column this group occupies (groups sit side by side)
+    int m_horizontalPosition = 0;
 
     /* logic */
     /// update the internal list of items and flow them into the rows.
@@ -80,6 +85,9 @@ struct VisualGroup {
 
     /// height of the group content, in pixels
     int contentHeight() const;
+
+    /// height of the rounded container that holds the cards (0 when collapsed)
+    int containerHeight() const;
 
     /// the number of visual rows this group has
     int numRows() const;

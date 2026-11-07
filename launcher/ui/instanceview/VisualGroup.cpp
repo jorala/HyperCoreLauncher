@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 /*
- *  Prism Launcher - Minecraft Launcher
+ *  HyperCore Launcher - Minecraft Launcher
  *  Copyright (C) 2022 Sefa Eyeoglu <contact@scrumplex.net>
  *  Copyright (C) 2023 Tayou <git@tayou.org>
  *
@@ -38,6 +38,7 @@
 
 #include <QApplication>
 #include <QDebug>
+#include <QLinearGradient>
 #include <QModelIndex>
 #include <QPainter>
 #include <QtMath>
@@ -52,7 +53,8 @@ VisualGroup::VisualGroup(const VisualGroup* other) : view(other->view), text(oth
 void VisualGroup::update()
 {
     auto temp_items = items();
-    auto itemsPerRow = view->itemsPerRow();
+    // never zero, a narrow window must not divide by zero
+    const int itemsPerRow = qMax(1, view->itemsPerRow());
 
     int numRows = qMax(1, qCeil((qreal)temp_items.size() / (qreal)itemsPerRow));
     rows = QList<VisualRow>(numRows);
@@ -75,6 +77,9 @@ void VisualGroup::update()
         }
         QStyleOptionViewItem viewItemOption;
         view->initViewItemOption(&viewItemOption);
+        if (view->selectionModel() && view->selectionModel()->isSelected(item)) {
+            viewItemOption.state |= QStyle::State_Selected;
+        }
 
         auto itemHeight = view->itemDelegate()->sizeHint(viewItemOption, item).height();
         if (itemHeight > maxRowHeight) {
@@ -119,17 +124,19 @@ VisualGroup::HitResults VisualGroup::hitScan(const QPoint& pos) const
     VisualGroup::HitResults results = VisualGroup::NoHit;
     int y_start = verticalPosition();
     int body_start = y_start + headerHeight();
-    int body_end = body_start + contentHeight();
+    int body_end = body_start + containerHeight();
     int y = pos.y();
-    // int x = pos.x();
-    if (y < y_start) {
+    const int x = pos.x();
+    if (x < m_horizontalPosition || x >= m_horizontalPosition + view->columnWidth()) {
+        results = VisualGroup::NoHit;
+    } else if (y < y_start) {
         results = VisualGroup::NoHit;
     } else if (y < body_start) {
         results = VisualGroup::HeaderHit;
         int collapseSize = headerHeight() - 4;
 
         // the icon
-        QRect iconRect = QRect(view->m_leftMargin + 2, 2 + y_start, view->width() - 4, collapseSize);
+        QRect iconRect = QRect(m_horizontalPosition + 2, 2 + y_start, view->columnWidth() - 4, collapseSize);
         if (iconRect.contains(pos)) {
             results |= VisualGroup::CheckboxHit;
         }
@@ -141,78 +148,68 @@ VisualGroup::HitResults VisualGroup::hitScan(const QPoint& pos) const
 
 void VisualGroup::drawHeader(QPainter* painter, const QStyleOptionViewItem& option) const
 {
-    QRect optRect = option.rect;
-    optRect.setTop(optRect.top() + 7);
-    QFont font(QApplication::font());
-    font.setBold(true);
-    const QFontMetrics fontMetrics = QFontMetrics(font);
-    painter->setFont(font);
-
-    QPen pen;
-    pen.setWidth(2);
-    QColor penColor = option.palette.text().color();
-    penColor.setAlphaF(0.6f);
-    pen.setColor(penColor);
-    painter->setPen(pen);
+    painter->save();
     painter->setRenderHint(QPainter::Antialiasing);
 
-    // sizes and offsets, to keep things consistent below
-    const int arrowOffsetLeft = fontMetrics.height() / 2 + 7;
-    const int textOffsetLeft = arrowOffsetLeft * 2;
-    const int centerHeight = optRect.top() + fontMetrics.height() / 2;
-    const QString& textToDraw = text.isEmpty() ? QObject::tr("Ungrouped") : text;
+    QFont font(QApplication::font());
+    font.setBold(true);
+    font.setPointSizeF(font.pointSizeF() + 1.0);
+    painter->setFont(font);
+    const QFontMetrics fm(font);
 
-    // BEGIN: arrow
-    {
-        constexpr int arrowSize = 6;
-        QPolygon arrowPolygon;
-        if (collapsed) {
-            arrowPolygon << QPoint(arrowOffsetLeft - arrowSize / 2, centerHeight - arrowSize)
-                         << QPoint(arrowOffsetLeft + arrowSize / 2, centerHeight)
-                         << QPoint(arrowOffsetLeft - arrowSize / 2, centerHeight + arrowSize);
-            painter->drawPolyline(arrowPolygon);
-        } else {
-            arrowPolygon << QPoint(arrowOffsetLeft - arrowSize, centerHeight - arrowSize / 2)
-                         << QPoint(arrowOffsetLeft, centerHeight + arrowSize / 2)
-                         << QPoint(arrowOffsetLeft + arrowSize, centerHeight - arrowSize / 2);
-            painter->drawPolyline(arrowPolygon);
-        }
+    const QColor base = option.palette.base().color();
+    const QColor textColor = option.palette.text().color();
+    const bool light = base.lightness() > 128;
+
+    // the group label: a rounded bar as wide as the column
+    const QRect label(option.rect.left(), option.rect.top(), option.rect.width(), fm.height() + 14);
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(light ? base.darker(112) : base.lighter(155));
+    painter->drawRoundedRect(label, 14, 14);
+
+    // collapse chevron on the left
+    QColor chevronColor = textColor;
+    chevronColor.setAlphaF(0.65f);
+    painter->setPen(QPen(chevronColor, 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    const QPoint c(label.left() + 20, label.center().y());
+    QPolygon chevron;
+    if (collapsed) {
+        chevron << QPoint(c.x() - 2, c.y() - 4) << QPoint(c.x() + 2, c.y()) << QPoint(c.x() - 2, c.y() + 4);
+    } else {
+        chevron << QPoint(c.x() - 4, c.y() - 2) << QPoint(c.x(), c.y() + 2) << QPoint(c.x() + 4, c.y() - 2);
     }
-    // END: arrow
+    painter->drawPolyline(chevron);
 
-    // BEGIN: text
-    {
-        QRect textRect(optRect);
-        textRect.setTop(textRect.top());
-        textRect.setLeft(textOffsetLeft);
-        textRect.setHeight(fontMetrics.height());
-        textRect.setRight(textRect.right() - 7);
+    // instance count on the right
+    const QString count = QString::number(items().size());
+    painter->setPen(chevronColor);
+    const QRect countRect(label.right() - 36, label.top(), 28, label.height());
+    painter->drawText(countRect, Qt::AlignRight | Qt::AlignVCenter, count);
 
-        painter->drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, textToDraw);
+    // the name, centered
+    painter->setPen(textColor);
+    const QRect nameRect = label.adjusted(40, 0, -40, 0);
+    painter->drawText(nameRect, Qt::AlignCenter, fm.elidedText(text.isEmpty() ? QObject::tr("Ungrouped") : text, Qt::ElideRight, nameRect.width()));
+
+    // the container that holds the group's cards
+    if (!collapsed) {
+        const QRect container(option.rect.left(), label.bottom() + 12, option.rect.width(), containerHeight());
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(light ? base.darker(104) : base.darker(128));
+        painter->drawRoundedRect(container, 28, 28);
     }
-    // END: text
 
-    // BEGIN: horizontal line
-    {
-        penColor.setAlphaF(0.05f);
-        pen.setColor(penColor);
-        painter->setPen(pen);
-        // startPoint is left + arrow + text + space
-        const int startPoint =
-            optRect.left() + fontMetrics.height() + fontMetrics.size(Qt::AlignLeft | Qt::AlignVCenter, textToDraw).width() + 20;
-        painter->setRenderHint(QPainter::Antialiasing, false);
-        QPolygon polygon;
-        // for some reason the height (yPos) doesn't look centered, so we are adding 1 to the center height
-        const int lineHeight = centerHeight + 1;
-        polygon << QPoint(startPoint, lineHeight) << QPoint(optRect.right() - 3, lineHeight);
-        painter->drawPolyline(polygon);
-    }
-    // END: horizontal line
+    painter->restore();
 }
 
 int VisualGroup::totalHeight() const
 {
-    return headerHeight() + contentHeight();
+    return headerHeight() + containerHeight();
+}
+
+int VisualGroup::containerHeight() const
+{
+    return collapsed ? 0 : contentHeight() + 2 * ContainerPadding;
 }
 
 int VisualGroup::headerHeight()
@@ -221,8 +218,7 @@ int VisualGroup::headerHeight()
     font.setBold(true);
     QFontMetrics fontMetrics(font);
 
-    const int height = fontMetrics.height() + 1 /* 1 pixel-width gradient */
-                       + 11 /* top and bottom separation */;
+    const int height = fontMetrics.height() + 14 /* label */ + 12 /* gap to the container */;
     return height;
     /*
     int raw = view->viewport()->fontMetrics().height() + 4;

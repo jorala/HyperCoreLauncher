@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only AND Apache-2.0
 
 /*
- *  Prism Launcher - Minecraft Launcher
+ *  HyperCore Launcher - Minecraft Launcher
  *  Copyright (C) 2022 Sefa Eyeoglu <contact@scrumplex.net>
  *  Copyright (C) 2022 Lenny McLennington <lenny@sneed.church>
  *  Copyright (C) 2022 Tayou <git@tayou.org>
@@ -154,7 +154,7 @@
 #include "updater/MacSparkleUpdater.h"
 #endif
 #else
-#include "updater/PrismExternalUpdater.h"
+#include "updater/HyperCoreExternalUpdater.h"
 #endif
 
 #if defined Q_OS_WIN32
@@ -449,7 +449,7 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
     m_dataPath = dataPath;
 
     /*
-     * Establish the mechanism for communication with an already running PrismLauncher that uses the same data path.
+     * Establish the mechanism for communication with an already running HyperCoreLauncher that uses the same data path.
      * If there is one, tell it what the user actually wanted to do and exit.
      * We want to initialize this before logging to avoid messing with the log of a potential already running copy.
      */
@@ -1087,9 +1087,9 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
 
     // check update locks
     {
-        auto updateLogPath = FS::PathCombine(m_dataPath, "logs", "prism_launcher_update.log");
+        auto updateLogPath = FS::PathCombine(m_dataPath, "logs", "hypercore_launcher_update.log");
 
-        auto updateLock = QFileInfo(FS::PathCombine(m_dataPath, ".prism_launcher_update.lock"));
+        auto updateLock = QFileInfo(FS::PathCombine(m_dataPath, ".hypercore_launcher_update.lock"));
         if (updateLock.exists()) {
             auto [timestamp, from, to, target, lockDataPath] = readLockFile(updateLock.absoluteFilePath());
             auto infoMsg = tr("This installation has a update lock file present at: %1\n"
@@ -1101,7 +1101,7 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
                               "\n"
                               "This likely means that a update attempt failed. Please ensure your installation is in working order before "
                               "proceeding.\n"
-                              "Check the Prism Launcher updater log at: \n"
+                              "Check the HyperCore Launcher updater log at: \n"
                               "%7\n"
                               "for details on the last update attempt.\n"
                               "\n"
@@ -1135,13 +1135,13 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
             }
         }
 
-        auto updateFailMarker = QFileInfo(FS::PathCombine(m_dataPath, ".prism_launcher_update.fail"));
+        auto updateFailMarker = QFileInfo(FS::PathCombine(m_dataPath, ".hypercore_launcher_update.fail"));
         if (updateFailMarker.exists()) {
             auto infoMsg = tr("An update attempt failed\n"
                               "\n"
                               "Please ensure your installation is in working order before "
                               "proceeding.\n"
-                              "Check the Prism Launcher updater log at: \n"
+                              "Check the HyperCore Launcher updater log at: \n"
                               "%1\n"
                               "for details on the last update attempt.")
                                .arg(updateLogPath);
@@ -1171,12 +1171,12 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
             }
         }
 
-        auto updateSuccessMarker = QFileInfo(FS::PathCombine(m_dataPath, ".prism_launcher_update.success"));
+        auto updateSuccessMarker = QFileInfo(FS::PathCombine(m_dataPath, ".hypercore_launcher_update.success"));
         if (updateSuccessMarker.exists()) {
             auto infoMsg = tr("Update succeeded\n"
                               "\n"
                               "You are now running %1 .\n"
-                              "Check the Prism Launcher updater log at: \n"
+                              "Check the HyperCore Launcher updater log at: \n"
                               "%2\n"
                               "for details.")
                                .arg(BuildConfig.printableVersionString())
@@ -1280,7 +1280,8 @@ bool Application::createSetupWizard()
             if (QApplication::style()->name() == "breeze") {
                 defaultIconTheme = darkMode ? "breeze_dark" : "breeze_light";
             } else {
-                defaultIconTheme = darkMode ? "flat_white" : "flat";
+                // the default HyperCore theme is dark, so always use the light (white) icons
+                defaultIconTheme = "flat_white";
             }
 
             settings()->set("IconTheme", defaultIconTheme);
@@ -1289,7 +1290,7 @@ bool Application::createSetupWizard()
 #if defined(Q_OS_LINUX)
             const QString style = "system";
 #else
-            const QString style = darkMode ? QStringLiteral("dark") : QStringLiteral("bright");
+            const QString style = QStringLiteral("hypercore");
 
 #endif
 
@@ -1428,7 +1429,7 @@ void Application::performMainStartupAction()
         m_updater.reset(new MacSparkleUpdater());
 #endif
 #else
-        m_updater.reset(new PrismExternalUpdater(m_mainWindow, m_rootPath, m_dataPath));
+        m_updater.reset(new HyperCoreExternalUpdater(m_mainWindow, m_rootPath, m_dataPath));
 #endif
         qDebug() << "<> Updater started.";
     }
@@ -1700,6 +1701,18 @@ void Application::ShowGlobalSettings(class QWidget* parent, QString openPage)
         return;
     }
     emit globalSettingsAboutToOpen();
+
+    // opened from the main window: show the settings inside it instead of as a separate window
+    if (m_mainWindow && parent == m_mainWindow) {
+        if (m_mainWindow->hasEmbeddedPage()) {
+            return;
+        }
+        auto lock = std::make_shared<SettingsObject::Lock>(APPLICATION->settings());
+        auto* dlg = new PageDialog(m_globalSettingsProvider.get(), std::move(openPage), m_mainWindow);
+        connect(dlg, &PageDialog::applied, this, &Application::globalSettingsApplied);
+        m_mainWindow->embedDialog(dlg, [lock](int) mutable { lock.reset(); });
+        return;
+    }
     {
         SettingsObject::Lock lock(APPLICATION->settings());
         PageDialog dlg(m_globalSettingsProvider.get(), std::move(openPage), parent);
@@ -1716,7 +1729,7 @@ MainWindow* Application::showMainWindow(bool minimized)
         m_mainWindow->activateWindow();
     } else {
         m_mainWindow = new MainWindow();
-        m_mainWindow->restoreState(QByteArray::fromBase64(APPLICATION->settings()->get("MainWindowState").toString().toUtf8()));
+        // the toolbar layout is fixed in HyperCore, a stale saved state must not move things around
         m_mainWindow->restoreGeometry(QByteArray::fromBase64(APPLICATION->settings()->get("MainWindowGeometry").toString().toUtf8()));
 
         if (minimized) {
@@ -1771,10 +1784,17 @@ InstanceWindow* Application::showInstanceWindow(MinecraftInstance* instance, con
 
         window->raise();
         window->activateWindow();
+        if (m_mainWindow) {
+            m_mainWindow->showEmbeddedWidget(window);
+        }
     } else {
         window = new InstanceWindow(instance);
         m_openWindows++;
         connect(window, &InstanceWindow::isClosing, this, &Application::on_windowClose);
+        // the editor lives inside the main window, only the console of a launching instance gets its own window
+        if (m_mainWindow && page != "console") {
+            m_mainWindow->embedInstanceWindow(window, instance->id());
+        }
     }
 
     if (!page.isEmpty()) {
